@@ -4,7 +4,8 @@ using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using System.Windows.Forms;
-using Form = System.Windows.Forms.Form;
+// Revit UI dan WinForms sama-sama punya class TaskDialog — pakai versi Revit
+using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 
 namespace CableTrayHub.Revit
 {

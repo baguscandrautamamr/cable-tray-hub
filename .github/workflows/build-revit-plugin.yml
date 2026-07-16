@@ -1,0 +1,40 @@
+name: Build Revit Plugin
+
+on:
+  push:
+    paths:
+      - "revit-plugin/**"
+      - ".github/workflows/build-revit-plugin.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build plugin (Release)
+        run: dotnet build revit-plugin/CableTrayHub.Revit/CableTrayHub.Revit.csproj -c Release
+
+      - name: Susun paket siap-install
+        shell: pwsh
+        run: |
+          $out = "package/CableTrayHub-Revit2025"
+          New-Item -ItemType Directory -Force "$out/CableTrayHub" | Out-Null
+          Copy-Item revit-plugin/CableTrayHub.addin $out
+          Copy-Item revit-plugin/CableTrayHub.Revit/bin/Release/CableTrayHub.Revit.dll "$out/CableTrayHub"
+          Copy-Item revit-plugin/README.md $out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CableTrayHub-Revit2025
+          path: package/
+          if-no-files-found: error

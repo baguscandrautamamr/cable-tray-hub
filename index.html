@@ -1,0 +1,2215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cable Tray Project Hub Ultimate Edition</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link class="no-print" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- SheetJS (Excel Export) -->
+  <script class="no-print" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- html2pdf.js (Premium PDF Export) -->
+  <script class="no-print" src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              light: '#f59e0b',
+              DEFAULT: '#f97316',
+              dark: '#ea580c',
+              neon: '#10b981'
+            },
+            zettbos: {
+              darkBg: '#090d16',
+              glass: 'rgba(17, 24, 39, 0.7)',
+              glassBorder: 'rgba(249, 115, 22, 0.2)'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    /* Transisi Halus antar Tema Mode */
+    .theme-transition {
+      transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(249, 115, 22, 0.3);
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(249, 115, 22, 0.6);
+    }
+    
+    /* Glassmorphism Effect */
+    .glass-effect {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* Print Layout Khusus (Engineering Report Layout A4) */
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printReportArea, #printReportArea * {
+        visibility: visible;
+      }
+      #printReportArea {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100% !important;
+        border: none !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        background: white !important;
+        color: black !important;
+      }
+    }
+  </style>
+</head>
+<body class="theme-transition bg-slate-50 text-slate-800 dark:bg-[#070a13] dark:text-slate-100 min-h-screen pb-24 font-sans selection:bg-orange-500 selection:text-white">
+
+  <!-- ================= HEADER UTAMA ================= -->
+  <header class="relative overflow-hidden bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 text-white pb-14 pt-6 px-4 md:px-8 rounded-b-[2rem] shadow-xl no-print">
+    <div class="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
+    
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 relative z-10">
+      <div class="flex items-center gap-3">
+        <div class="bg-white/20 p-2.5 rounded-2xl backdrop-blur-md border border-white/30 shadow-inner">
+          <i class="fa-solid fa-network-wired text-3xl animate-pulse"></i>
+        </div>
+        <div>
+          <h1 class="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
+            CABLE TRAY PROJECT HUB <span class="text-xs font-bold px-2 py-0.5 bg-yellow-400 text-orange-950 rounded-full shadow-sm">ULTIMATE</span>
+          </h1>
+          <p class="text-xs text-orange-100 font-medium" data-i18n="header-tagline">Sistem Kalkulasi Pintar Penataan Kabel & Manajemen Proyek</p>
+        </div>
+      </div>
+      
+      <div class="flex flex-wrap items-center justify-center gap-3 bg-black/15 p-2 rounded-2xl backdrop-blur-md border border-white/10">
+        <div class="flex bg-white/10 rounded-lg p-0.5 text-xs font-bold border border-white/10">
+          <button type="button" id="btnLangID" onclick="setLanguage('ID')" class="px-2.5 py-1 rounded transition-all text-white bg-orange-600">ID</button>
+          <button type="button" id="btnLangEN" onclick="setLanguage('EN')" class="px-2.5 py-1 rounded transition-all text-white/70 hover:text-white">EN</button>
+        </div>
+
+        <div class="flex bg-white/10 rounded-lg p-0.5 text-xs font-bold border border-white/10">
+          <button type="button" id="btnRoleGuest" onclick="switchRole('Guest')" class="px-3 py-1 rounded-md transition-all">
+            <i class="fa-solid fa-user-tag mr-1"></i><span data-i18n="role-guest">Guest</span>
+          </button>
+          <button type="button" id="btnRoleAdmin" onclick="switchRole('Admin')" class="px-3 py-1 rounded-md transition-all">
+            <i class="fa-solid fa-user-shield mr-1"></i><span data-i18n="role-admin">Admin</span>
+          </button>
+        </div>
+
+        <button type="button" onclick="toggleTheme()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-transform active:scale-95 border border-white/10" title="Ubah Tema">
+          <i id="themeIcon" class="fa-solid fa-moon text-sm"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= SEARCH BAR MELAYANG ================= -->
+  <div class="max-w-7xl mx-auto px-4 -mt-7 relative z-20 no-print">
+    <div class="bg-white dark:bg-slate-900 shadow-lg dark:shadow-black/50 border border-slate-100 dark:border-slate-800/80 p-3 rounded-2xl flex flex-col md:flex-row items-center gap-3">
+      <div class="relative w-full">
+        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input type="text" id="mainSearchInput" oninput="triggerHistorySearch()" placeholder="Cari simulasi berdasarkan nama proyek, ID, atau user..." class="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-500 theme-transition">
+      </div>
+      <div class="flex w-full md:w-auto items-center gap-2">
+        <button type="button" onclick="openTab('simulation')" class="w-full md:w-auto px-5 py-2.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 whitespace-nowrap transition-all">
+          <i class="fa-solid fa-circle-plus"></i> <span data-i18n="btn-new-simulation">Simulasi Baru</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 mt-8">
+    <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- ================= DASHBOARD HOME TAB ================= -->
+    <div id="tab-home" class="tab-content space-y-6">
+      <div class="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl shadow-sm relative overflow-hidden theme-transition">
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-extrabold flex items-center gap-2">
+              <span id="greetingText" data-i18n="greeting">Hai, Engineer</span> 
+              <span class="animate-bounce">👋</span>
+            </h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1" data-i18n="tagline-desc">Selamat datang di Cable Tray Hub. Analisis kapasitas dan kelayakan teknis tray secara instan.</p>
+          </div>
+          <div class="flex items-center gap-4 bg-orange-50 dark:bg-orange-950/20 p-3 rounded-2xl border border-orange-100 dark:border-orange-900/30">
+            <div class="p-2.5 bg-orange-500 text-white rounded-xl">
+              <i class="fa-solid fa-calendar-day"></i>
+            </div>
+            <div>
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider" data-i18n="current-date">Tanggal Hari Ini</p>
+              <p class="text-sm font-black text-slate-800 dark:text-slate-100" id="currentDateDisplay">10 Juni 2026</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid Menu Navigasi -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 no-print">
+        <div onclick="openTab('simulation')" class="cursor-pointer group p-5 bg-white dark:bg-slate-900 border rounded-3xl hover:shadow-lg transition-all text-center relative overflow-hidden">
+          <div class="w-12 h-12 mx-auto rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl mb-4"><i class="fa-solid fa-calculator"></i></div>
+          <h3 class="font-black text-sm tracking-tight" data-i18n="menu-calc">Kalkulator Tray</h3>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" data-i18n="menu-calc-desc">Simulasi beban & kapasitas penampang</p>
+        </div>
+        <div onclick="openTab('catalog')" class="cursor-pointer group p-5 bg-white dark:bg-slate-900 border rounded-3xl hover:shadow-lg transition-all text-center relative overflow-hidden">
+          <div class="w-12 h-12 mx-auto rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl mb-4"><i class="fa-solid fa-database"></i></div>
+          <h3 class="font-black text-sm tracking-tight" data-i18n="menu-catalog">Katalog Kabel</h3>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" data-i18n="menu-catalog-desc">Master diameter & berat kabel KMI</p>
+        </div>
+        <div onclick="openTab('tray-templates')" class="cursor-pointer group p-5 bg-white dark:bg-slate-900 border rounded-3xl hover:shadow-lg transition-all text-center relative overflow-hidden">
+          <div class="w-12 h-12 mx-auto rounded-2xl bg-red-500 text-white flex items-center justify-center text-xl mb-4"><i class="fa-solid fa-table-list"></i></div>
+          <h3 class="font-black text-sm tracking-tight" data-i18n="menu-tray">Template Tray</h3>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" data-i18n="menu-tray-desc">Spesifikasi dimensi & max load tray</p>
+        </div>
+        <div onclick="openTab('history')" class="cursor-pointer group p-5 bg-white dark:bg-slate-900 border rounded-3xl hover:shadow-lg transition-all text-center relative overflow-hidden">
+          <div class="w-12 h-12 mx-auto rounded-2xl bg-indigo-500 text-white flex items-center justify-center text-xl mb-4"><i class="fa-solid fa-folder-open"></i></div>
+          <h3 class="font-black text-sm tracking-tight" data-i18n="menu-history">Riwayat Proyek</h3>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" data-i18n="menu-history-desc">Review laporan penataan kabel</p>
+        </div>
+      </div>
+
+      <!-- Summary Counts -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+        <div class="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6 rounded-3xl flex justify-between items-center shadow-lg">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase tracking-wider" data-i18n="sum-cables">Total Database Kabel</p>
+            <p class="text-3xl font-black text-orange-500 mt-1" id="sumKabelCount">132</p>
+          </div>
+          <i class="fa-solid fa-cable-car text-4xl text-slate-800"></i>
+        </div>
+        <div class="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6 rounded-3xl flex justify-between items-center shadow-lg">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase tracking-wider" data-i18n="sum-trays">Template Standard Tray</p>
+            <p class="text-3xl font-black text-yellow-500 mt-1" id="sumTrayCount">9</p>
+          </div>
+          <i class="fa-solid fa-industry text-4xl text-slate-800"></i>
+        </div>
+        <div class="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-6 rounded-3xl flex justify-between items-center shadow-lg">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase tracking-wider" data-i18n="sum-sims">Total Riwayat Simulasi</p>
+            <p class="text-3xl font-black text-emerald-500 mt-1" id="sumSimulasiCount">3</p>
+          </div>
+          <i class="fa-solid fa-clock-rotate-left text-4xl text-slate-800"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SIMULATION CALCULATOR TAB ================= -->
+    <div id="tab-simulation" class="tab-content hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Input Form (7 Cols) -->
+        <div class="lg:col-span-7 bg-white dark:bg-slate-900 p-6 border border-slate-100 dark:border-slate-800/80 rounded-3xl shadow-sm space-y-5 no-print">
+          <div class="border-b border-slate-100 dark:border-slate-800 pb-4">
+            <h3 class="text-lg font-black"><i class="fa-solid fa-gears text-orange-500 mr-2"></i><span data-i18n="sim-title">Parameter Desain Simulasi</span></h3>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="sim-desc">Konfigurasikan spesifikasi peletakan kabel secara detail.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-proj">Nama Proyek / Instalasi</label>
+              <input type="text" id="simProjName" oninput="syncLiveReportPreview()" placeholder="Contoh: Gardu Induk Lantai 1" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100 font-bold">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-category">Kategori Struktur Tray</label>
+              <select id="simTrayType" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100 font-bold">
+                <option value="Perforated">Perforated Tray</option>
+                <option value="Unperforated">Unperforated Tray</option>
+                <option value="Vertical">Vertical Cable Tray</option>
+                <option value="Ladder">Ladder Cable Tray</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-spare">Spare Space Factor</label>
+              <select id="simSpareSpace" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100 font-bold">
+                <option value="0">0%</option>
+                <option value="10">10%</option>
+                <option value="20" selected>20%</option>
+                <option value="30">30%</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="sim-layout">Metodeboard Konfigurasi Kabel</label>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex flex-col items-center gap-1.5 text-center text-xs font-bold shadow-sm hover:border-orange-500 transition-all">
+                <input type="radio" name="layoutMethod" value="Flat Touching" checked onchange="runCalculation()" class="accent-orange-500">
+                <span>Flat Touching</span>
+              </label>
+              <label class="cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex flex-col items-center gap-1.5 text-center text-xs font-bold shadow-sm hover:border-orange-500 transition-all">
+                <input type="radio" name="layoutMethod" value="Flat Spaced" onchange="runCalculation()" class="accent-orange-500">
+                <span>Flat Spaced (De)</span>
+              </label>
+              <label class="cursor-pointer bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-xl flex flex-col items-center gap-1.5 text-center text-xs font-bold shadow-sm hover:border-orange-500 transition-all">
+                <input type="radio" name="layoutMethod" value="Trefoil" onchange="runCalculation()" class="accent-orange-500">
+                <span>Trefoil Layout</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider" data-i18n="sim-cables-title">Daftar Bundle Kabel Elektrikal</h4>
+              <button type="button" onclick="addSelectedCableRow()" class="px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition-all">
+                <i class="fa-solid fa-plus"></i> <span data-i18n="btn-add-cable">Tambah Kabel</span>
+              </button>
+            </div>
+            
+            <div id="simCableList" class="space-y-2.5 max-h-[220px] overflow-y-auto pr-1"></div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1" data-i18n="sim-override-w">Custom Lebar Tray (mm)</label>
+              <input type="number" id="simCustomWidth" oninput="customWidthOverride()" placeholder="Width" class="w-full px-3 py-2 rounded-lg border bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100 font-bold">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1">Custom Tinggi Tray (mm)</label>
+              <input type="number" id="simCustomHeight" oninput="customHeightOverride()" placeholder="Height" class="w-full px-3 py-2 rounded-lg border bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100 font-bold">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-400 mb-1" data-i18n="sim-override-l">Custom Max Load (kg/m)</label>
+              <input type="number" id="simCustomMaxLoad" oninput="customLoadOverride()" placeholder="Max Load" class="w-full px-3 py-2 rounded-lg border bg-slate-50 dark:bg-slate-950 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100 font-bold">
+            </div>
+          </div>
+
+          <!-- FIXED SAVE TO HISTORY ACTION BUTTON -->
+          <button type="button" id="btnSaveSimulation" onclick="commitSaveSimulation()" class="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all">
+            <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="btn-save">Simpan Laporan Ke Riwayat Database</span>
+          </button>
+        </div>
+
+        <div class="lg:col-span-5 space-y-4">
+          
+          <div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-5 shadow-sm space-y-4 relative overflow-hidden no-print">
+            <div class="flex justify-between items-center">
+              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                <i class="fa-solid fa-eye text-orange-500"></i>
+                <span data-i18n="sim-live">Live Penampang Visual</span>
+              </h4>
+              <span id="canvasEffectiveBadge" class="text-[10px] px-2 py-0.5 font-black bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-full">Spare 20% Active</span>
+            </div>
+            
+            <div class="flex flex-col items-center bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 relative">
+              <canvas id="trayVisualizer" class="w-full max-w-[280px] h-[150px] rounded-lg cursor-grab active:cursor-grabbing"></canvas>
+              
+              <p class="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-2 text-center" data-i18n="drag-instruction">
+                💡 Tips: Seret & letakkan lingkaran kabel untuk kustom penataan.
+              </p>
+              
+              <div class="reset-btn-container mt-2 flex flex-wrap justify-center gap-2">
+                <button type="button" onclick="resetCablePositionsToDefault()" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-orange-500 hover:text-white text-slate-600 dark:text-slate-300 text-[10px] font-black rounded-lg transition-all flex items-center gap-1">
+                  <i class="fa-solid fa-rotate-left"></i> <span data-i18n="btn-reset-layout">Reset Layout</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 text-slate-100 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-lg relative no-print">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 class="font-black text-sm text-slate-400 uppercase tracking-widest" data-i18n="sim-res">Kalkulator Kapasitas</h3>
+              <span id="statusSpaceBadge" class="text-xs px-3 py-1 font-extrabold rounded-full bg-emerald-500/10 text-emerald-400">AMAN</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 pb-2 border-b border-slate-800">
+              <div>
+                <p class="text-xs text-slate-400 font-bold" data-i18n="res-tot-width">Total Lebar Kabel</p>
+                <p class="text-xl font-black text-white" id="resTotalWidth">0.0 mm</p>
+              </div>
+              <div>
+                <p class="text-xs text-slate-400 font-bold" data-i18n="res-eff-width">Lebar Tray Efektif</p>
+                <p class="text-xl font-black text-orange-400" id="resEffectiveWidth">0.0 mm</p>
+              </div>
+              <div>
+                <p class="text-xs text-slate-400 font-bold" data-i18n="res-tot-weight">Total Berat Bundle</p>
+                <p class="text-xl font-black text-white" id="resTotalWeight">0.00 kg/m</p>
+              </div>
+              <div>
+                <p class="text-xs text-slate-400 font-bold" data-i18n="res-max-load">Batas Beban Mekanis</p>
+                <p class="text-xl font-black text-yellow-500" id="resMaxLoad">0.00 kg/m</p>
+              </div>
+            </div>
+
+            <div id="weightWarningBox" class="hidden p-3 bg-red-950/30 border border-red-900/50 text-red-400 text-xs rounded-xl flex items-start gap-2.5">
+              <i class="fa-solid fa-triangle-exclamation text-base mt-0.5"></i>
+              <div>
+                <p class="font-bold" data-i18n="warn-overload">Warning Overload Beban!</p>
+                <p class="text-[11px] opacity-80" data-i18n="warn-overload-desc">Total berat kabel melebihi batas beban mekanis tray standar. Berisiko rubuh.</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="smartRecommendCard" class="hidden bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-3xl p-5 shadow-xl border border-amber-400 relative overflow-hidden transition-all animate-fade-in no-print">
+            <div class="absolute -right-6 -bottom-6 opacity-15 transform rotate-12">
+              <i class="fa-solid fa-lightbulb text-9xl"></i>
+            </div>
+            <div class="flex items-start gap-4">
+              <div class="p-3 bg-white/20 text-white rounded-2xl backdrop-blur-md border border-white/20 flex items-center justify-center">
+                <i class="fa-solid fa-wand-magic-sparkles text-xl"></i>
+              </div>
+              <div class="space-y-1">
+                <h4 class="font-black text-sm uppercase tracking-wide" data-i18n="smart-title">💡 Auto-Recommend Solution</h4>
+                <p class="text-xs font-semibold text-amber-50" data-i18n="smart-desc">Sistem otomatis mendeteksi tipe tray alternatif yang memenuhi syarat ruang bebas dan kekuatan beban mekanis.</p>
+                <div class="mt-3.5 bg-black/20 p-3 rounded-xl border border-white/10 text-xs font-bold inline-block">
+                  <span id="recommendTrayText">Gunakan Tray Tipe B (200x100)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= PREVIEW LAPORAN REKAYASA (A4 FORMAL) ================= -->
+    <div id="tab-preview-report-tab" class="tab-content hidden space-y-6">
+      <div class="max-w-4xl mx-auto flex justify-between items-center bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-md no-print">
+        <div>
+          <h3 class="text-base font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-file-contract text-orange-500"></i>
+            <span data-i18n="preview-report-title">Pratinjau Laporan Rekayasa (A4)</span>
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">Lembar cetak dokumen rekayasa formal dengan rincian parameter sirkuit.</p>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" onclick="exportSimulationPDF()" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all">
+            <i class="fa-solid fa-file-pdf"></i> <span data-i18n="btn-pdf">Export PDF</span>
+          </button>
+          <button type="button" onclick="printSimulationReport()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all">
+            <i class="fa-solid fa-print"></i> <span data-i18n="btn-print">Print Report</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="printReportArea" class="block bg-white text-black p-6 md:p-8 rounded-2xl border border-slate-200 shadow-inner max-w-4xl mx-auto theme-transition">
+        <div class="border-b-4 border-orange-600 pb-4 flex justify-between items-start">
+          <div>
+            <h1 class="text-xl font-black text-orange-600 uppercase tracking-tight">CABLE TRAY HUB ENGINEERING REPORT</h1>
+            <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Standard Engineering Calculation Sheet</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[9px] font-black text-slate-400 uppercase">Generated Timestamp</p>
+            <p class="text-xs font-black text-slate-800" id="printReportTimestamp">10/06/2026 22:00:00</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 py-4 border-b border-slate-200 text-xs">
+          <div class="space-y-1.5 text-slate-700">
+            <p><strong>Project Name:</strong> <span id="printProjName" class="text-slate-900 font-semibold">-</span></p>
+            <p><strong>Tray Category:</strong> <span id="printTrayType" class="text-slate-900 font-semibold">-</span></p>
+            <p><strong>Configuration Layout:</strong> <span id="printLayoutMethod" class="text-slate-900 font-semibold">-</span></p>
+          </div>
+          <div class="space-y-1.5 text-right text-slate-700">
+            <p><strong>Tray Dimensions:</strong> <span id="printTrayDim" class="text-slate-900 font-semibold">-</span></p>
+            <p><strong>Spare Space Factor:</strong> <span id="printSpareFactor" class="text-slate-900 font-semibold">-</span></p>
+            <p><strong>Assigned App Peran:</strong> <span id="printDesignerRole" class="text-slate-900 font-semibold">-</span></p>
+          </div>
+        </div>
+
+        <div class="my-5">
+          <h3 class="text-xs font-black uppercase text-orange-600 mb-2 tracking-wider">1. Diagram Lintasan Penampang (Visual Tray Diagram)</h3>
+          <div class="flex justify-center bg-slate-50 p-4 border rounded-xl border-slate-200">
+            <img id="printCanvasImage" alt="Snapshot Penampang Kabel" class="w-full max-w-[300px] h-auto object-contain border rounded bg-white p-1">
+          </div>
+        </div>
+
+        <div class="my-5">
+          <h3 class="text-xs font-black uppercase text-orange-600 mb-2 tracking-wider">2. Rincian Bundle Komponen Kabel di Dalam Penampang Visual</h3>
+          <table class="w-full text-[11px] text-left border-collapse border border-slate-200">
+            <thead>
+              <tr class="bg-slate-50 text-slate-700">
+                <th class="border border-slate-200 p-2">Tipe Kabel</th>
+                <th class="border border-slate-200 p-2 text-center">Jumlah (Qty)</th>
+                <th class="border border-slate-200 p-2 text-center">Diameter Outer (De)</th>
+                <th class="border border-slate-200 p-2 text-center">Berat Nominal</th>
+                <th class="border border-slate-200 p-2 text-center">Total Bobot Lintasan</th>
+              </tr>
+            </thead>
+            <tbody id="printCableSpecsTableBody" class="text-slate-800">
+              <tr>
+                <td colspan="5" class="p-4 text-center text-slate-400 font-semibold">Tidak ada bundle sirkuit sirkulasi kabel terpilih.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="my-5">
+          <h3 class="text-xs font-black uppercase text-orange-600 mb-2 tracking-wider">3. Parameter Kelayakan Kapasitas Ruang & Beban Mekanis</h3>
+          <table class="w-full text-[11px] text-left border-collapse border border-slate-200">
+            <thead>
+              <tr class="bg-slate-50 text-slate-700">
+                <th class="border border-slate-200 p-2">Kriteria Pengujian Lintasan</th>
+                <th class="border border-slate-200 p-2">Nilai Akumulasi Sirkuit / Status Otoritas</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-800">
+              <tr>
+                <td class="border border-slate-200 p-2 font-medium">Total Required Bundle Cable Width Space</td>
+                <td id="printTotalWidthVal" class="border border-slate-200 p-2 font-bold">0.0 mm</td>
+              </tr>
+              <tr>
+                <td class="border border-slate-200 p-2 font-medium">Effective Available Tray Width Limit</td>
+                <td id="printEffectiveWidthVal" class="border border-slate-200 p-2 font-bold text-orange-600">0.0 mm</td>
+              </tr>
+              <tr>
+                <td class="border border-slate-200 p-2 font-medium">Total Simulated Cable Weight Loading</td>
+                <td id="printTotalWeightVal" class="border border-slate-200 p-2 font-bold">0.00 kg/m</td>
+              </tr>
+              <tr>
+                <td class="border border-slate-200 p-2 font-medium">Max Allowed Structure Mechanical Load</td>
+                <td id="printMaxLoadVal" class="border border-slate-200 p-2 font-bold text-yellow-600">0.00 kg/m</td>
+              </tr>
+              <tr>
+                <td class="border border-slate-200 p-2 font-medium">Cable Fill Area Ratio (NEC Art 392)</td>
+                <td id="printFillRatioVal" class="border border-slate-200 p-2 font-bold">0.0%</td>
+              </tr>
+              <tr>
+                <td class="border border-slate-200 p-2 font-medium">Grouping Derating Factor (PUIL 2011)</td>
+                <td id="printDeratingVal" class="border border-slate-200 p-2 font-bold">1.00</td>
+              </tr>
+              <tr class="bg-orange-50 font-black">
+                <td class="border border-slate-200 p-2 text-slate-800">Status Kelayakan Ruang Sisa (Fill Status)</td>
+                <td id="printStatusSpaceVal" class="border border-slate-200 p-2 text-orange-600 uppercase">AMAN</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="my-4 hidden" id="printRecommendSection">
+          <h4 class="text-xs font-bold text-slate-700 uppercase mb-1.5">4. Catatan Laporan Rekomendasi Sistem Pintar</h4>
+          <div class="p-3 bg-amber-50 border border-amber-200 text-xs rounded-xl font-bold text-amber-700" id="printRecommendVal">-</div>
+        </div>
+
+        <div class="mt-8 grid grid-cols-2 text-center text-xs">
+          <div></div>
+          <div class="space-y-12">
+            <p class="font-bold text-slate-700">Verified and Approved By,</p>
+            <div class="w-32 h-0.5 bg-slate-300 mx-auto"></div>
+            <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider" id="printSignName">Senior Electrical Engineer</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= RIWAYAT TAB ================= -->
+    <div id="tab-history" class="tab-content hidden space-y-6">
+      
+      <div class="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 overflow-x-auto">
+        <button type="button" onclick="filterHistoryType('All')" class="history-tab-btn px-4 py-2 text-xs font-bold rounded-xl whitespace-nowrap transition-all bg-orange-500 text-white shadow-md" data-i18n="filter-all">
+          Semua Jenis
+        </button>
+        <button type="button" onclick="filterHistoryType('Unperforated')" class="history-tab-btn px-4 py-2 text-xs font-bold text-slate-500 rounded-xl whitespace-nowrap bg-white dark:bg-slate-900 border">Unperforated</button>
+        <button type="button" onclick="filterHistoryType('Perforated')" class="history-tab-btn px-4 py-2 text-xs font-bold text-slate-500 rounded-xl whitespace-nowrap bg-white dark:bg-slate-900 border">Perforated</button>
+        <button type="button" onclick="filterHistoryType('Vertical')" class="history-tab-btn px-4 py-2 text-xs font-bold text-slate-500 rounded-xl whitespace-nowrap bg-white dark:bg-slate-900 border">Vertical</button>
+        <button type="button" onclick="filterHistoryType('Ladder')" class="history-tab-btn px-4 py-2 text-xs font-bold text-slate-500 rounded-xl whitespace-nowrap bg-white dark:bg-slate-900 border">Ladder</button>
+      </div>
+
+      <div id="historyListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+      <div class="text-center py-6">
+        <button type="button" id="btnLoadMoreHistory" onclick="fetchNextHistoryPage()" class="px-5 py-2.5 bg-slate-100 dark:bg-slate-900 border text-xs font-bold rounded-xl">
+          <i class="fa-solid fa-spinner animate-spin mr-1.5 hidden" id="spinnerHistory"></i> <span data-i18n="btn-load-more">Load More Riwayat</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ================= KATALOG TAB ================= -->
+    <div id="tab-catalog" class="tab-content hidden space-y-6">
+      
+      <div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-6 shadow-sm space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-black"><i class="fa-solid fa-circle-nodes text-orange-500 mr-2"></i><span data-i18n="catalog-title">Master Database Kabel Elektrikal</span></h3>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="catalog-desc">Kelola master diameter, berat kabel nominal, serta daya hantar arus kabel standar KMI.</p>
+          </div>
+          <!-- TOMBOL TAMBAH KABEL BARU DIPASTIKAN SELALU BISA DIKLIK OLEH SEMUA ROLE -->
+          <button type="button" id="btnAddNewCable" onclick="openCableFormModal(false)" class="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all">
+            <i class="fa-solid fa-plus"></i> <span data-i18n="btn-add-cable-new">Tambah Kabel Baru</span>
+          </button>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div class="relative w-full md:w-72">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="text" id="catalogSearchInput" oninput="filterCatalog()" placeholder="Cari tipe kabel..." class="w-full pl-9 pr-3 py-2 rounded-xl border bg-white text-xs text-slate-950 focus:outline-none">
+          </div>
+          
+          <div class="flex flex-wrap gap-1.5 items-center w-full md:w-auto">
+            <button type="button" onclick="filterCatalogType('All')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-orange-500 text-white shadow-sm">All</button>
+            <button type="button" onclick="filterCatalogType('NYA')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYA</button>
+            <button type="button" onclick="filterCatalogType('NYM')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYM</button>
+            <button type="button" onclick="filterCatalogType('NYY')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYY</button>
+            <button type="button" onclick="filterCatalogType('NYBY')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYBY</button>
+            <button type="button" onclick="filterCatalogType('NYCY')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYCY</button>
+            <button type="button" onclick="filterCatalogType('NYFGbY')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYFGbY</button>
+            <button type="button" onclick="filterCatalogType('NYRY')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYRY</button>
+            <button type="button" onclick="filterCatalogType('NYSY')" class="catalog-filter-btn px-3 py-1.5 text-[11px] font-black rounded-lg bg-white dark:bg-slate-900 border text-slate-500 dark:text-slate-400">NYSY</button>
+          </div>
+        </div>
+
+        <div id="catalogGridContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+
+    </div>
+
+    <!-- ================= TEMPLATE TRAY TAB ================= -->
+    <div id="tab-tray-templates" class="tab-content hidden space-y-6">
+      
+      <div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-6 shadow-sm space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-black"><i class="fa-solid fa-cubes text-orange-500 mr-2"></i><span data-i18n="tray-title">Template Struktur Tray Standard</span></h3>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="tray-desc">Kelola ukuran standar lebar, tinggi, serta batasan mekanik berat per meter.</p>
+          </div>
+          <button type="button" id="btnAddNewTray" onclick="openTrayFormModal(false)" class="px-4 py-2.5 bg-orange-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md active:scale-95"><i class="fa-solid fa-plus"></i> <span data-i18n="btn-add-tray">Tambah Template</span></button>
+        </div>
+
+        <div id="trayGridContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+
+    </div>
+
+    <!-- ================= OTORISASI TAB ================= -->
+    <div id="tab-profile" class="tab-content hidden space-y-6">
+      
+      <div class="max-w-xl mx-auto bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-6 shadow-sm space-y-6">
+        <div class="text-center space-y-2">
+          <div class="w-20 h-20 bg-gradient-to-tr from-orange-500 to-amber-500 rounded-3xl flex items-center justify-center text-3xl text-white mx-auto shadow-md"><i class="fa-solid fa-user-gear"></i></div>
+          <h3 class="text-lg font-black" id="profileNameDisplay">User Guest</h3>
+          <span id="profileRoleBadge" class="text-xs px-3 py-1 font-extrabold rounded-full bg-slate-100 text-slate-500 uppercase">Peran: Guest</span>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-950/50 border p-4 rounded-2xl space-y-3">
+          <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest" data-i18n="auth-title">Informasi Hak Otorisasi</h4>
+          <div class="space-y-2 text-xs font-bold">
+            <div class="flex justify-between items-center bg-transparent"><span data-i18n="auth-sim">Akses Simulasi & Kalkulasi</span><span class="text-emerald-500"><i class="fa-solid fa-circle-check"></i> <span data-i18n="auth-active">Aktif</span></span></div>
+            <div class="flex justify-between items-center bg-transparent"><span data-i18n="auth-report">Unduh Laporan PDF & Excel</span><span class="text-emerald-500"><i class="fa-solid fa-circle-check"></i> <span data-i18n="auth-active">Aktif</span></span></div>
+            <div class="flex justify-between items-center bg-transparent"><span data-i18n="auth-catalog">Edit Katalog Database Master</span><span id="authKatalogIndicator" class="text-red-500"><i class="fa-solid fa-circle-xmark"></i> <span data-i18n="auth-locked">Terkunci</span></span></div>
+          </div>
+        </div>
+
+        <div class="space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Pilih Role Pengguna Aplikasi</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" id="profileBtnGuest" onclick="switchRole('Guest')" class="py-2.5 rounded-xl border-2 border-orange-500/20 text-xs font-black active:scale-95 transition-transform">Guest Mode</button>
+            <button type="button" id="profileBtnAdmin" onclick="switchRole('Admin')" class="py-2.5 rounded-xl border-2 border-orange-500/20 text-xs font-black active:scale-95 transition-transform">Admin Mode</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ================= BOTTOM NAVIGATION BAR ================= -->
+  <nav class="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-1.5 md:gap-4 transition-all glass-effect no-print">
+    <button type="button" onclick="openTab('home')" id="nav-home" class="flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-orange-500 bg-orange-50 dark:bg-orange-950/20">
+      <i class="fa-solid fa-house-chimney text-sm"></i><span data-i18n="nav-home">Home</span>
+    </button>
+    <button type="button" onclick="openTab('simulation')" id="nav-simulation" class="flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-slate-400 hover:text-orange-500 hover:bg-slate-50">
+      <i class="fa-solid fa-calculator text-sm"></i><span data-i18n="nav-simulation">Simulation</span>
+    </button>
+    <!-- PREVIEW REPORT TAB BUTTON IN THE MIDDLE -->
+    <button type="button" onclick="openTab('preview-report-tab')" id="nav-preview-report-tab" class="flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-slate-400 hover:text-orange-500 hover:bg-slate-50">
+      <i class="fa-solid fa-file-contract text-sm"></i><span data-i18n="nav-preview-report-tab">Preview Report</span>
+    </button>
+    <button type="button" onclick="openTab('history')" id="nav-history" class="flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-slate-400 hover:text-orange-500 hover:bg-slate-50">
+      <i class="fa-solid fa-clock-rotate-left text-sm"></i><span data-i18n="nav-history">History</span>
+    </button>
+    <button type="button" onclick="openTab('profile')" id="nav-profile" class="flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-slate-400 hover:text-orange-500 hover:bg-slate-50">
+      <i class="fa-solid fa-user-shield text-sm"></i><span data-i18n="nav-profile">Otorisasi</span>
+    </button>
+  </nav>
+
+  <!-- ================= MASTER MODAL DATA DIALOG ================= -->
+  <!-- Modal Kabel -->
+  <div id="modalKabel" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
+    <div class="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3 border-slate-100 dark:border-slate-800">
+        <h4 id="modalKabelTitle" class="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-slate-100">Detail Kabel Elektrikal</h4>
+        <button type="button" onclick="closeCableFormModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="space-y-4">
+        <input type="hidden" id="formKabelId">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Nama Tipe Kabel</label>
+          <input type="text" id="formKabelNama" placeholder="Contoh: NYY 1x240 mm²" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Tipe Core</label>
+          <select id="formKabelTipeCore" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+            <option value="Single Core">Single Core</option>
+            <option value="Multi Core">Multi Core</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Diameter (mm)</label>
+            <input type="number" step="0.01" id="formKabelDiameter" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Arus Max (A)</label>
+            <input type="number" step="0.1" id="formKabelMaxCurrent" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Berat (kg/m)</label>
+            <input type="number" step="0.001" id="formKabelBerat" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+          </div>
+        </div>
+        <button type="button" onclick="commitSaveCable(event)" class="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-xl shadow-lg active:scale-95 transition-all">
+          <i class="fa-solid fa-check"></i> Simpan Katalog Master
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Tray -->
+  <div id="modalTray" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
+    <div class="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3 border-slate-100 dark:border-slate-800">
+        <h4 id="modalTrayTitle" class="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-slate-100">Detail Template Tray</h4>
+        <button type="button" onclick="closeTrayFormModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="space-y-4">
+        <input type="hidden" id="formTrayId">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Nama Tipe Tray</label>
+          <input type="text" id="formTrayNama" required placeholder="Contoh: Tray Tipe C (300x100)" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Lebar (mm)</label>
+            <input type="number" id="formTrayLebar" required class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Tinggi (mm)</label>
+            <input type="number" id="formTrayTinggi" required class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Batas kg/m</label>
+            <input type="number" step="0.1" id="formTrayMaxLoad" required class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none">
+          </div>
+        </div>
+        <button type="button" onclick="commitSaveTray(event)" class="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-xl shadow-lg active:scale-95 transition-all">
+          <i class="fa-solid fa-check"></i> Simpan Template Master
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Login Admin -->
+  <div id="modalLogin" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
+    <div class="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3 border-slate-100 dark:border-slate-800">
+        <h4 class="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-slate-100">Login Administrator</h4>
+        <button type="button" onclick="closeLoginModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <form onsubmit="commitLogin(event)" class="space-y-4">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">User</label>
+          <input type="text" id="loginUser" required placeholder="Masukkan user" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1">Password</label>
+          <input type="password" id="loginPassword" required placeholder="Masukkan password" class="w-full px-4 py-2.5 rounded-xl border bg-slate-50 text-sm text-slate-800 dark:text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500">
+        </div>
+        <button type="submit" class="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-xl shadow-lg active:scale-95 transition-all">
+          <i class="fa-solid fa-right-to-bracket"></i> Masuk Admin
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // DATA MASTER LENGKAP 132 KABEL PREMIUM KMI
+    // DIKOMPRESI KE COMPACT METADATA ARRAY GUNA MENCEGAH TRUNCATION PADA PLATFORM GEMINI CANVAS (SANGAT KRITIKAL!)
+    const rawCables = [
+      ["KAB-0001", "NYA 1.5 mm²", "Single Core", 3.1, 24, 0.022],
+      ["KAB-0002", "NYA 2.5 mm²", "Single Core", 3.7, 32, 0.034],
+      ["KAB-0003", "NYA 4.0 mm²", "Single Core", 4.3, 42, 0.050],
+      ["KAB-0004", "NYA 6.0 mm²", "Single Core", 4.8, 54, 0.070],
+      ["KAB-0005", "NYA 10.0 mm²", "Single Core", 6.2, 73, 0.117],
+      ["KAB-0006", "NYA 16.0 mm²", "Single Core", 7.2, 98, 0.173],
+      ["KAB-0007", "NYA 25.0 mm²", "Single Core", 9.0, 129, 0.277],
+      ["KAB-0008", "NYA 35.0 mm²", "Single Core", 10.1, 158, 0.369],
+      ["KAB-0009", "NYA 50.0 mm²", "Single Core", 12.1, 197, 0.513],
+      ["KAB-0010", "NYA 70.0 mm²", "Single Core", 13.8, 245, 0.709],
+      ["KAB-0011", "NYA 95.0 mm²", "Single Core", 16.0, 290, 0.958],
+      ["KAB-0012", "NYA 120.0 mm²", "Single Core", 17.6, 345, 1.183],
+      ["KAB-0013", "NYA 150.0 mm²", "Single Core", 19.5, 390, 1.448],
+      ["KAB-0014", "NYA 185.0 mm²", "Single Core", 22.0, 445, 1.835],
+      ["KAB-0015", "NYA 240.0 mm²", "Single Core", 25.5, 525, 2.413],
+      ["KAB-0016", "NYA 300.0 mm²", "Single Core", 28.0, 605, 2.958],
+      ["KAB-0017", "NYA 400.0 mm²", "Single Core", 32.5, 715, 3.782],
+      ["KAB-0018", "NYM 2x1.5 mm²", "Multi Core", 9.5, 19, 0.116],
+      ["KAB-0019", "NYM 2x2.5 mm²", "Multi Core", 10.5, 25, 0.157],
+      ["KAB-0020", "NYM 2x4.0 mm²", "Multi Core", 11.5, 34, 0.203],
+      ["KAB-0021", "NYM 2x6.0 mm²", "Multi Core", 12.5, 44, 0.262],
+      ["KAB-0022", "NYM 2x10.0 mm²", "Multi Core", 16.0, 60, 0.426],
+      ["KAB-0023", "NYM 2x16.0 mm²", "Multi Core", 19.0, 80, 0.638],
+      ["KAB-0024", "NYM 2x25.0 mm²", "Multi Core", 23.0, 110, 0.962],
+      ["KAB-0025", "NYM 2x35.0 mm²", "Multi Core", 26.0, 135, 1.270],
+      ["KAB-0026", "NYY 1x1.5 mm²", "Single Core", 6.1, 27, 0.053],
+      ["KAB-0027", "NYY 1x2.5 mm²", "Single Core", 6.6, 36, 0.067],
+      ["KAB-0028", "NYY 1x4.0 mm²", "Single Core", 7.6, 47, 0.094],
+      ["KAB-0029", "NYY 1x6.0 mm²", "Single Core", 8.1, 59, 0.117],
+      ["KAB-0030", "NYY 1x10.0 mm²", "Single Core", 9.1, 77, 0.166],
+      ["KAB-0031", "NYY 1x16.0 mm²", "Single Core", 10.1, 101, 0.229],
+      ["KAB-0032", "NYY 1x25.0 mm²", "Single Core", 11.9, 135, 0.345],
+      ["KAB-0033", "NYY 1x35.0 mm²", "Single Core", 13.0, 163, 0.444],
+      ["KAB-0034", "NYY 1x50.0 mm²", "Single Core", 15.0, 198, 0.600],
+      ["KAB-0035", "NYY 1x70.0 mm²", "Single Core", 16.9, 251, 0.815],
+      ["KAB-0036", "NYY 1x95.0 mm²", "Single Core", 19.1, 308, 1.079],
+      ["KAB-0037", "NYY 1x120.0 mm²", "Single Core", 21.0, 359, 1.325],
+      ["KAB-0038", "NYY 1x150.0 mm²", "Single Core", 23.0, 414, 1.604],
+      ["KAB-0039", "NYY 1x185.0 mm²", "Single Core", 25.5, 475, 2.020],
+      ["KAB-0040", "NYY 1x240.0 mm²", "Single Core", 29.0, 564, 2.636],
+      ["KAB-0041", "NYY 1x300.0 mm²", "Single Core", 32.0, 651, 3.219],
+      ["KAB-0042", "NYY 1x400.0 mm²", "Single Core", 35.5, 752, 4.087],
+      ["KAB-0043", "NYY 1x500.0 mm²", "Single Core", 39.5, 868, 5.213],
+      ["KAB-0044", "NYY 1x630.0 mm²", "Single Core", 44.0, 1005, 6.712],
+      ["KAB-0045", "NYY 1x800.0 mm²", "Single Core", 48.5, 1140, 8.368],
+      ["KAB-0046", "NYBY 1x16 mm²", "Single Core", 15.4, 102, 0.396],
+      ["KAB-0047", "NYBY 1x25 mm²", "Single Core", 16.2, 124, 0.497],
+      ["KAB-0048", "NYBY 1x35 mm²", "Single Core", 17.3, 149, 0.608],
+      ["KAB-0049", "NYBY 1x50 mm²", "Single Core", 19.3, 175, 0.785],
+      ["KAB-0050", "NYBY 1x70 mm²", "Single Core", 21.5, 216, 1.011],
+      ["KAB-0051", "NYBY 1x95 mm²", "Single Core", 23.5, 258, 1.298],
+      ["KAB-0052", "NYBY 1x120 mm²", "Single Core", 25.0, 299, 1.552],
+      ["KAB-0053", "NYBY 1x150 mm²", "Single Core", 27.0, 342, 1.850],
+      ["KAB-0054", "NYBY 1x185 mm²", "Single Core", 29.5, 396, 2.279],
+      ["KAB-0055", "NYBY 1x240 mm²", "Single Core", 32.5, 469, 2.926],
+      ["KAB-0056", "NYBY 1x300 mm²", "Single Core", 35.5, 538, 3.521],
+      ["KAB-0057", "NYBY 1x400 mm²", "Single Core", 39.5, 622, 4.476],
+      ["KAB-0058", "NYBY 1x500 mm²", "Single Core", 43.5, 715, 5.645],
+      ["KAB-0059", "NYBY 1x630 mm²", "Single Core", 48.0, 810, 7.190],
+      ["KAB-0060", "NYBY 1x800 mm²", "Single Core", 54.0, 920, 8.941],
+      ["KAB-0061", "NYCY 1x1.5/1.5 mm²", "Single Core", 9.9, 28, 0.121],
+      ["KAB-0062", "NYCY 1x2.5/2.5 mm²", "Single Core", 10.4, 37, 0.143],
+      { id: "KAB-0063", nama: "NYCY 1x4/4 mm²", tipeCore: "Single Core", diameter: 11.4, maxCurrent: 48, berat: 0.188 },
+      { id: "KAB-0064", nama: "NYCY 1x6/6 mm²", tipeCore: "Single Core", diameter: 11.9, maxCurrent: 60, berat: 0.233 },
+      { id: "KAB-0065", nama: "NYCY 1x10/10 mm²", tipeCore: "Single Core", diameter: 12.9, maxCurrent: 79, berat: 0.324 },
+      { id: "KAB-0066", nama: "NYCY 1x16/16 mm²", tipeCore: "Single Core", diameter: 14.4, maxCurrent: 103, berat: 0.456 },
+      { id: "KAB-0067", nama: "NYCY 1x25/16 mm²", tipeCore: "Single Core", diameter: 16.1, maxCurrent: 137, berat: 0.582 },
+      { id: "KAB-0068", nama: "NYCY 1x35/16 mm²", tipeCore: "Single Core", diameter: 17.2, maxCurrent: 165, berat: 0.687 },
+      { id: "KAB-0069", nama: "NYCY 1x50/25 mm²", tipeCore: "Single Core", diameter: 19.7, maxCurrent: 200, berat: 0.943 },
+      { id: "KAB-0070", nama: "NYCY 1x70/35 mm²", tipeCore: "Single Core", diameter: 22.0, maxCurrent: 253, berat: 1.259 },
+      { id: "KAB-0071", nama: "NYCY 1x95/50 mm²", tipeCore: "Single Core", diameter: 24.5, maxCurrent: 310, berat: 1.678 },
+      { id: "KAB-0072", nama: "NYCY 1x120/70 mm²", tipeCore: "Single Core", diameter: 27.0, maxCurrent: 361, berat: 2.122 },
+      { id: "KAB-0073", nama: "NYCY 1x150/70 mm²", tipeCore: "Single Core", diameter: 28.5, maxCurrent: 414, berat: 2.410 },
+      { id: "KAB-0074", nama: "NYCY 1x185/95 mm²", tipeCore: "Single Core", diameter: 31.5, maxCurrent: 478, berat: 3.049 },
+      { id: "KAB-0075", nama: "NYCY 1x240/120 mm²", tipeCore: "Single Core", diameter: 35.0, maxCurrent: 567, berat: 3.898 },
+      { id: "KAB-0076", nama: "NYCY 1x300/150 mm²", tipeCore: "Single Core", diameter: 38.0, maxCurrent: 654, berat: 4.778 },
+      { id: "KAB-0077", nama: "NYCY 1x400/185 mm²", tipeCore: "Single Core", diameter: 43.0, maxCurrent: 755, berat: 6.031 },
+      { id: "KAB-0078", nama: "NYCY 1x500/240 mm²", tipeCore: "Single Core", diameter: 47.5, maxCurrent: 871, berat: 7.689 },
+      { id: "KAB-0079", nama: "NYCY 1x630/300 mm²", tipeCore: "Single Core", diameter: 52.5, maxCurrent: 1008, berat: 9.778 },
+      { id: "KAB-0080", nama: "NYCY 1x800/400 mm²", tipeCore: "Single Core", diameter: 58.5, maxCurrent: 1143, berat: 12.427 },
+      ["KAB-0081", "NYFGbY 2x1.5 mm²", "Multi Core", 17.9, 28, 0.611],
+      ["KAB-0082", "NYFGbY 2x2.5 mm²", "Multi Core", 18.0, 32, 0.630],
+      ["KAB-0083", "NYFGbY 2x4.0 mm²", "Multi Core", 17.8, 43, 0.648],
+      ["KAB-0084", "NYFGbY 2x6.0 mm²", "Multi Core", 18.1, 55, 0.687],
+      ["KAB-0085", "NYFGbY 2x10.0 mm²", "Multi Core", 20.5, 75, 0.881],
+      ["KAB-0086", "NYFGbY 2x16.0 mm²", "Multi Core", 22.5, 95, 1.085],
+      ["KAB-0087", "NYFGbY 2x25.0 mm²", "Multi Core", 25.5, 125, 1.428],
+      ["KAB-0088", "NYFGbY 2x35.0 mm²", "Multi Core", 27.5, 150, 1.753],
+      ["KAB-0089", "NYFGbY 2x50.0 mm²", "Multi Core", 31.0, 185, 2.120],
+      ["KAB-0090", "NYFGbY 2x70.0 mm²", "Multi Core", 35.0, 230, 2.716],
+      ["KAB-0091", "NYFGbY 2x95.0 mm²", "Multi Core", 39.5, 280, 3.528],
+      ["KAB-0092", "NYFGbY 2x120.0 mm²", "Multi Core", 43.0, 320, 4.177],
+      ["KAB-0093", "NYFGbY 2x150.0 mm²", "Multi Core", 47.0, 365, 5.012],
+      ["KAB-0094", "NYFGbY 2x185.0 mm²", "Multi Core", 52.0, 420, 6.116],
+      ["KAB-0095", "NYFGbY 2x240.0 mm²", "Multi Core", 58.0, 490, 7.695],
+      ["KAB-0096", "NYFGbY 2x300.0 mm²", "Multi Core", 64.0, 560, 9.384],
+      ["KAB-0097", "NYRY 1x10 mm²", "Single Core", 14.4, 75, 0.326],
+      ["KAB-0098", "NYRY 1x16 mm²", "Single Core", 15.4, 98, 0.402],
+      ["KAB-0099", "NYRY 1x25 mm²", "Single Core", 17.2, 130, 0.541],
+      ["KAB-0100", "NYRY 1x35 mm²", "Single Core", 18.3, 155, 0.658],
+      ["KAB-0101", "NYRY 1x50 mm²", "Single Core", 20.5, 182, 0.841],
+      ["KAB-0102", "NYRY 1x70 mm²", "Single Core", 22.5, 225, 1.070],
+      ["KAB-0103", "NYRY 1x95 mm²", "Single Core", 24.5, 270, 1.365],
+      ["KAB-0104", "NYRY 1x120 mm²", "Single Core", 26.5, 310, 1.662],
+      ["KAB-0105", "NYRY 1x150 mm²", "Single Core", 28.5, 355, 1.967],
+      ["KAB-0106", "NYRY 1x185 mm²", "Single Core", 31.0, 410, 2.406],
+      ["KAB-0107", "NYRY 1x240 mm²", "Single Core", 34.0, 485, 3.071],
+      ["KAB-0108", "NYRY 1x300 mm²", "Single Core", 38.0, 555, 3.781],
+      ["KAB-0109", "NYRY 1x400 mm²", "Single Core", 42.0, 640, 4.764],
+      ["KAB-0110", "NYRY 1x500 mm²", "Single Core", 46.5, 730, 5.968],
+      ["KAB-0111", "NYRY 1x630 mm²", "Single Core", 51.0, 825, 7.538],
+      ["KAB-0112", "NYRY 1x800 mm²", "Single Core", 57.0, 935, 9.508],
+      ["KAB-0113", "NYSY 1x1.5 mm²", "Single Core", 8.8, 28, 0.110],
+      ["KAB-0114", "NYSY 1x2.5 mm²", "Single Core", 9.3, 36, 0.128],
+      ["KAB-0115", "NYSY 1x4.0 mm²", "Single Core", 10.2, 48, 0.162],
+      ["KAB-0116", "NYSY 1x6.0 mm²", "Single Core", 10.8, 59, 0.191],
+      ["KAB-0117", "NYSY 1x10.0 mm²", "Single Core", 11.7, 78, 0.247],
+      ["KAB-0118", "NYSY 1x16.0 mm²", "Single Core", 12.7, 102, 0.318],
+      ["KAB-0119", "NYSY 1x25.0 mm²", "Single Core", 14.6, 136, 0.449],
+      ["KAB-0120", "NYSY 1x35.0 mm²", "Single Core", 15.7, 164, 0.558],
+      ["KAB-0121", "NYSY 1x50.0 mm²", "Single Core", 17.6, 199, 0.730],
+      ["KAB-0122", "NYSY 1x70.0 mm²", "Single Core", 19.4, 252, 0.951],
+      ["KAB-0123", "NYSY 1x95.0 mm²", "Single Core", 22.0, 309, 1.232],
+      ["KAB-0124", "NYSY 1x120.0 mm²", "Single Core", 23.5, 360, 1.481],
+      ["KAB-0125", "NYSY 1x150.0 mm²", "Single Core", 25.5, 413, 1.774],
+      ["KAB-0126", "NYSY 1x185.0 mm²", "Single Core", 27.5, 476, 2.197],
+      ["KAB-0127", "NYSY 1x240.0 mm²", "Single Core", 31.0, 565, 2.821],
+      ["KAB-0128", "NYSY 1x300.0 mm²", "Single Core", 34.0, 652, 3.422],
+      ["KAB-0129", "NYSY 1x400.0 mm²", "Single Core", 38.0, 753, 4.350],
+      ["KAB-0130", "NYSY 1x500.0 mm²", "Single Core", 42.0, 869, 5.504],
+      ["KAB-0131", "NYSY 1x630.0 mm²", "Single Core", 46.5, 1006, 7.035],
+      ["KAB-0132", "NYSY 1x800.0 mm²", "Single Core", 52.0, 1141, 8.770]
+    ];
+
+    // Ekspansi array kompak secara real-time pada saat load untuk sasis database
+    let dbKabel = rawCables.map(item => {
+      if (Array.isArray(item)) {
+        return { id: item[0], nama: item[1], tipeCore: item[2], diameter: item[3], maxCurrent: item[4], berat: item[5] };
+      }
+      return item; // Object pass-through
+    });
+
+    let dbTray = [
+      { id: "TRY-0001", nama: "Tray 100x100 mm", lebar: 100, tinggi: 100, maxLoad: 20.0 },
+      { id: "TRY-0002", nama: "Tray 200x100 mm", lebar: 200, tinggi: 100, maxLoad: 40.0 },
+      { id: "TRY-0003", nama: "Tray 300x100 mm", lebar: 300, tinggi: 100, maxLoad: 60.0 },
+      { id: "TRY-0004", nama: "Tray 400x100 mm", lebar: 400, tinggi: 100, maxLoad: 80.0 },
+      { id: "TRY-0005", nama: "Tray 500x100 mm", lebar: 500, tinggi: 100, maxLoad: 100.0 },
+      { id: "TRY-0006", nama: "Tray 600x100 mm", lebar: 600, tinggi: 100, maxLoad: 120.0 },
+      { id: "TRY-0007", nama: "Tray 800x100 mm", lebar: 800, tinggi: 100, maxLoad: 160.0 },
+      { id: "TRY-0008", nama: "Tray 1000x100 mm", lebar: 1000, tinggi: 100, maxLoad: 200.0 },
+      { id: "TRY-0009", nama: "Tray 1200x100 mm", lebar: 1200, tinggi: 100, maxLoad: 240.0 }
+    ];
+
+    let dbHistory = [
+      { id: "SIM-20260610-0001", tanggal: "10/06/2026 14:25:00", namaProyek: "Gedung Kantor Sudirman", jenisTray: "Perforated", lebarTray: 300, metode: "Flat Touching", persenSpare: "20%", totalLebarKabel: 180, totalBerat: 24.5, status: "AMAN", rekomendasi: "-", user: "Admin Utama" }
+    ];
+
+    // DEFINISI TRANSLATIONS AGAR PINDAH BAHASA TIDAK ERROR
+    const translations = {
+      ID: {
+        "header-tagline": "Sistem Kalkulasi Pintar Penataan Kabel & Manajemen Proyek",
+        "role-guest": "Guest",
+        "role-admin": "Admin",
+        "btn-new-simulation": "Simulasi Baru",
+        "greeting": "Hai, Engineer",
+        "tagline-desc": "Selamat datang di Cable Tray Hub. Analisis kapasitas dan kelayakan teknis tray secara instan.",
+        "current-date": "Tanggal Hari Ini",
+        "menu-calc": "Kalkulator Tray",
+        "menu-calc-desc": "Simulasi beban & kapasitas penampang",
+        "menu-catalog": "Katalog Kabel",
+        "menu-catalog-desc": "Master diameter & berat kabel KMI",
+        "menu-tray": "Template Tray",
+        "menu-tray-desc": "Spesifikasi dimensi & max load tray",
+        "menu-history": "Riwayat Proyek",
+        "menu-history-desc": "Review laporan penataan kabel",
+        "sum-cables": "Total Database Kabel",
+        "sum-trays": "Template Standard Tray",
+        "sum-sims": "Total Riwayat Simulasi",
+        "sim-title": "Parameter Desain Simulasi",
+        "sim-desc": "Konfigurasikan spesifikasi peletakan kabel secara detail.",
+        "sim-proj": "Nama Proyek / Instalasi",
+        "sim-category": "Kategori Struktur Tray",
+        "sim-spare": "Spare Space Factor",
+        "sim-layout": "Metodeboard Konfigurasi Kabel",
+        "sim-cables-title": "Daftar Bundle Kabel Elektrikal",
+        "btn-add-cable": "Tambah Kabel",
+        "sim-override-w": "Custom Lebar Tray (mm)",
+        "sim-override-l": "Custom Max Load (kg/m)",
+        "btn-save": "Simpan Laporan Ke Riwayat Database",
+        "sim-live": "Live Penampang Visual",
+        "drag-instruction": "💡 Tips: Seret & letakkan lingkaran kabel untuk kustom penataan.",
+        "btn-reset-layout": "Reset Layout",
+        "sim-res": "Kalkulator Kapasitas",
+        "res-tot-width": "Total Lebar Kabel",
+        "res-eff-width": "Lebar Tray Efektif",
+        "res-tot-weight": "Total Berat Bundle",
+        "res-max-load": "Batas Beban Mekanis",
+        "warn-overload": "Warning Overload Beban!",
+        "warn-overload-desc": "Total berat kabel melebihi batas beban mekanis tray standar. Berisiko rubuh.",
+        "smart-title": "💡 Auto-Recommend Solution",
+        "smart-desc": "Sistem otomatis mendeteksi tipe tray alternatif yang memenuhi syarat ruang bebas dan kekuatan beban mekanis.",
+        "preview-report-title": "Pratinjau Laporan Rekayasa (A4)",
+        "btn-pdf": "Export PDF",
+        "btn-print": "Print Report",
+        "filter-all": "Semua Jenis",
+        "btn-load-more": "Load More Riwayat",
+        "catalog-title": "Master Database Kabel Elektrikal",
+        "catalog-desc": "Kelola master diameter, berat kabel nominal, serta daya hantar arus kabel standar KMI.",
+        "btn-add-cable-new": "Tambah Kabel Baru",
+        "tray-title": "Template Struktur Tray Standard",
+        "tray-desc": "Kelola ukuran standar lebar, tinggi, serta batasan mekanik berat per meter.",
+        "btn-add-tray": "Tambah Template",
+        "auth-title": "Informasi Hak Otorisasi",
+        "auth-sim": "Akses Simulasi & Kalkulasi",
+        "auth-active": "Aktif",
+        "auth-report": "Unduh Laporan PDF & Excel",
+        "auth-catalog": "Edit Katalog Database Master",
+        "auth-locked": "Terkunci",
+        "nav-home": "Home",
+        "nav-simulation": "Simulation",
+        "nav-preview-report-tab": "Preview Report",
+        "nav-history": "History",
+        "nav-profile": "Otorisasi"
+      },
+      EN: {
+        "header-tagline": "Smart Calculation System for Cable Laying & Project Management",
+        "role-guest": "Guest",
+        "role-admin": "Admin",
+        "btn-new-simulation": "New Simulation",
+        "greeting": "Hi, Engineer",
+        "tagline-desc": "Welcome to Cable Tray Hub. Instantly analyze tray capacity and technical feasibility.",
+        "current-date": "Current Date",
+        "menu-calc": "Tray Calculator",
+        "menu-calc-desc": "Simulate load & cross-sectional capacity",
+        "menu-catalog": "Cable Catalog",
+        "menu-catalog-desc": "Master diameter & weight of KMI cables",
+        "menu-tray": "Tray Templates",
+        "menu-tray-desc": "Dimensions specifications & max tray load",
+        "menu-history": "Project History",
+        "menu-history-desc": "Review cable laying reports",
+        "sum-cables": "Total Cable Database",
+        "sum-trays": "Standard Tray Templates",
+        "sum-sims": "Total Simulation History",
+        "sim-title": "Simulation Design Parameters",
+        "sim-desc": "Configure cable layout specifications in detail.",
+        "sim-proj": "Project / Installation Name",
+        "sim-category": "Tray Structure Category",
+        "sim-spare": "Spare Space Factor",
+        "sim-layout": "Cable Configuration Method",
+        "sim-cables-title": "Electrical Cable Bundle List",
+        "btn-add-cable": "Add Cable",
+        "sim-override-w": "Custom Tray Width (mm)",
+        "sim-override-l": "Custom Max Load (kg/m)",
+        "btn-save": "Save Report to Database History",
+        "sim-live": "Live Visual Cross-Section",
+        "drag-instruction": "💡 Tips: Drag & drop cable circles to customize layout.",
+        "btn-reset-layout": "Reset Layout",
+        "sim-res": "Capacity Calculator",
+        "res-tot-width": "Total Cable Width",
+        "res-eff-width": "Effective Tray Width",
+        "res-tot-weight": "Total Bundle Weight",
+        "res-max-load": "Mechanical Load Limit",
+        "warn-overload": "Load Overload Warning!",
+        "warn-overload-desc": "Total cable weight exceeds standard tray mechanical load limit. Risk of collapse.",
+        "smart-title": "💡 Auto-Recommend Solution",
+        "smart-desc": "System automatically detects alternative tray types meeting spare space and mechanical load requirements.",
+        "preview-report-title": "Engineering Report Preview (A4)",
+        "btn-pdf": "Export PDF",
+        "btn-print": "Print Report",
+        "filter-all": "All Types",
+        "btn-load-more": "Load More History",
+        "catalog-title": "Electrical Cable Master Database",
+        "catalog-desc": "Manage master diameter, nominal cable weight, and current carrying capacity of KMI standard cables.",
+        "btn-add-cable-new": "Add New Cable",
+        "tray-title": "Standard Tray Structure Templates",
+        "tray-desc": "Manage standard width, height, and mechanical weight limits per meter.",
+        "btn-add-tray": "Add Template",
+        "auth-title": "Authorization Status Info",
+        "auth-sim": "Simulation & Calculation Access",
+        "auth-active": "Active",
+        "auth-report": "Download PDF & Excel Reports",
+        "auth-catalog": "Edit Master Database Catalog",
+        "auth-locked": "Locked",
+        "nav-home": "Home",
+        "nav-simulation": "Simulation",
+        "nav-preview-report-tab": "Preview Report",
+        "nav-history": "History",
+        "nav-profile": "Authorization"
+      }
+    };
+
+    let currentRole = 'Guest'; 
+    let activeTab = 'home';
+    let historyPageOffset = 0;
+    const historyPageLimit = 10;
+    let selectedHistoryFilterType = 'All';
+    let selectedCatalogType = 'All';
+    let currentSearchQuery = '';
+    let currentLanguage = localStorage.getItem('appLanguage') || 'ID';
+
+    // STATE INTERNAL DRAG & DROP KABEL
+    let cableInstances = [];
+    let isDragging = false;
+    let activeDragIndex = -1;
+    let currentLayoutMethod = '';
+    let currentTrayWidth = 0;
+
+    // ====================================================================
+    // KONEKSI DATABASE ONLINE (Google Apps Script Web App API)
+    // --------------------------------------------------------------------
+    // Tempel URL Web App Google Apps Script Anda (yang berakhiran /exec)
+    // di bawah ini. Setelah diisi, versi Vercel akan otomatis membaca dan
+    // menyimpan data ke Google Sheets — database yang sama juga bisa
+    // diakses plugin Revit lewat ?action=getSimulation&id=...
+    // Biarkan kosong ("") untuk mode offline (data bawaan browser).
+    // ====================================================================
+    const API_URL = "";
+
+    let isOnlineDb = false;
+
+    function apiGet(action, params) {
+      let url = API_URL + "?action=" + encodeURIComponent(action);
+      if (params) {
+        Object.keys(params).forEach(key => {
+          url += "&" + encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
+        });
+      }
+      return fetch(url, { method: "GET", redirect: "follow" }).then(res => res.json());
+    }
+
+    function apiPost(action, data) {
+      // Content-Type text/plain menghindari preflight CORS pada Apps Script
+      return fetch(API_URL, {
+        method: "POST",
+        redirect: "follow",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: action, data: data })
+      }).then(res => res.json());
+    }
+
+    // FUNGSI NOTIFIKASI TOAST (DIPERLUKAN OLEH CTA BUTTON)
+    function showToast(message, type = "success") {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      
+      const toast = document.createElement('div');
+      let bgColor = "bg-emerald-500";
+      if (type === "warning") bgColor = "bg-amber-500";
+      if (type === "danger" || type === "error") bgColor = "bg-red-500";
+      
+      toast.className = `${bgColor} text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-bold transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto flex items-center gap-2 z-50`;
+      toast.innerHTML = `<span>${message}</span>`;
+      
+      container.appendChild(toast);
+      
+      // Animasi Slide Up In
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+      
+      // Auto dismiss setelah 3 detik
+      setTimeout(() => {
+        toast.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => { toast.remove(); }, 300);
+      }, 3000);
+    }
+
+    // FUNGSI UPDATE UI COUNTS (DIPERLUKAN OLEH INITIALIZATION)
+    function updateUIMasterCounts() {
+      const sumKabel = document.getElementById('sumKabelCount');
+      const sumTray = document.getElementById('sumTrayCount');
+      const sumSimulasi = document.getElementById('sumSimulasiCount');
+      
+      if (sumKabel) sumKabel.innerText = dbKabel.length;
+      if (sumTray) sumTray.innerText = dbTray.length;
+      if (sumSimulasi) sumSimulasi.innerText = dbHistory.length;
+    }
+
+    // SINKRONISASI MANAJEMEN BAHASA PREFERENSI (ID / EN)
+    function setLanguage(lang) {
+      currentLanguage = lang;
+      localStorage.setItem('appLanguage', lang);
+      if (lang === 'ID') {
+        document.getElementById('btnLangID').className = "px-2.5 py-1 rounded transition-all text-white bg-orange-600";
+        document.getElementById('btnLangEN').className = "px-2.5 py-1 rounded transition-all text-white/70 hover:text-white";
+      } else {
+        document.getElementById('btnLangEN').className = "px-2.5 py-1 rounded transition-all text-white bg-orange-600";
+        document.getElementById('btnLangID').className = "px-2.5 py-1 rounded transition-all text-white/70 hover:text-white";
+      }
+      document.querySelectorAll('[data-i18n]').forEach(element => {
+        const key = element.getAttribute('data-i18n');
+        if (translations[lang] && translations[lang][key]) {
+          element.textContent = translations[lang][key];
+        }
+      });
+      runCalculation();
+    }
+
+    function applyServerData(response) {
+      if (response && response.success) {
+        // SINKRONISASI PENGAMAN
+        const validCables = response.kabel ? response.kabel.filter(k => k.id && k.nama && !isNaN(k.diameter)) : [];
+        if (validCables.length >= dbKabel.length) {
+          dbKabel = validCables;
+        }
+
+        const validTrays = response.tray ? response.tray.filter(t => t.id && t.nama && !isNaN(t.lebar)) : [];
+        if (validTrays.length > 0) {
+          dbTray = validTrays;
+        }
+
+        if (response.history && response.history.length > 0) {
+          dbHistory = response.history;
+        }
+        isOnlineDb = true;
+      }
+      runLocalInitialization();
+    }
+
+    function loadInitialData() {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        try {
+          google.script.run
+            .withSuccessHandler(applyServerData)
+            .getInitialData();
+        } catch (e) {
+          console.warn("API Server unreached, utilizing defensive local data.");
+          runLocalInitialization();
+        }
+      } else if (API_URL) {
+        apiGet("getInitialData")
+          .then(function(response) {
+            applyServerData(response);
+            if (isOnlineDb) {
+              showToast("Terhubung ke database online (Google Sheets)", "success");
+            } else {
+              showToast("Database online merespons tapi data tidak valid", "warning");
+            }
+          })
+          .catch(function(err) {
+            console.warn("Database online tidak terjangkau, memakai data lokal.", err);
+            showToast("Database online tidak terjangkau — mode offline", "warning");
+            runLocalInitialization();
+          });
+      } else {
+        runLocalInitialization();
+      }
+    }
+
+    function runLocalInitialization() {
+      updateUIMasterCounts();
+      
+      // Mengisi default value sasis penampang secara manual karena dropdown ditiadakan
+      const customWidth = document.getElementById('simCustomWidth');
+      const customHeight = document.getElementById('simCustomHeight');
+      const customMaxLoad = document.getElementById('simCustomMaxLoad');
+      
+      if (customWidth && (!customWidth.value || customWidth.value === "0" || customWidth.value === "")) {
+        customWidth.value = 300;
+      }
+      if (customHeight && (!customHeight.value || customHeight.value === "0" || customHeight.value === "")) {
+        customHeight.value = 100;
+      }
+      if (customMaxLoad && (!customMaxLoad.value || customMaxLoad.value === "0" || customMaxLoad.value === "")) {
+        customMaxLoad.value = 60.0;
+      }
+
+      repopulateSimulationSelectors();
+      renderKabelCatalog();
+      renderTrayTemplates();
+      renderHistoryList(true);
+      refreshCableDropdowns();
+    }
+
+    function refreshCableDropdowns() {
+      const selectElements = document.querySelectorAll('#simCableList select');
+      selectElements.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = "";
+        dbKabel.forEach(k => {
+          const opt = document.createElement('option');
+          opt.value = k.id;
+          opt.innerText = `${k.nama} (De: ${k.diameter}mm)`;
+          if (k.id === currentValue) opt.selected = true;
+          select.appendChild(opt);
+        });
+      });
+      runCalculation();
+    }
+
+    function repopulateSimulationSelectors() {
+      // Fungsi penahan untuk kompatibilitas sasis
+    }
+
+    function applyTrayTemplateSelect() {
+      // Fungsi penahan untuk kompatibilitas sasis
+    }
+
+    function customWidthOverride() { runCalculation(); }
+    function customHeightOverride() { runCalculation(); }
+    function customLoadOverride() { runCalculation(); }
+
+    function openTab(tabId) {
+      activeTab = tabId;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+      document.querySelectorAll('nav button').forEach(btn => {
+        btn.className = "flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-slate-400 hover:text-orange-500 hover:bg-slate-50 dark:hover:bg-slate-800/50";
+      });
+      
+      const activeNavBtn = document.getElementById('nav-' + tabId);
+      if (activeNavBtn) {
+        activeNavBtn.className = "flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-orange-500 bg-orange-50 dark:bg-orange-950/20";
+      }
+
+      if (tabId === 'history') { renderHistoryList(true); } 
+      else if (tabId === 'catalog') { renderKabelCatalog(); } 
+      else if (tabId === 'tray-templates') { renderTrayTemplates(); }
+    }
+
+    // MEMASTIKAN TOMBOL "TAMBAH KABEL BARU" TETAP AKTIF DALAM ROLE APAPUN, DENGAN OTENTIKASI UNTUK ADMIN
+    function switchRole(role) {
+      if (role === 'Admin') {
+        if (currentRole === 'Admin') return; // Sudah admin
+        openLoginModal();
+      } else {
+        currentRole = 'Guest';
+        applyRoleUI('Guest');
+        showToast("Beralih ke Mode Guest.", "warning");
+      }
+    }
+
+    function openLoginModal() {
+      const modal = document.getElementById('modalLogin');
+      if (modal) {
+        document.getElementById('loginUser').value = "";
+        document.getElementById('loginPassword').value = "";
+        modal.classList.remove('hidden');
+      }
+    }
+
+    function closeLoginModal() {
+      const modal = document.getElementById('modalLogin');
+      if (modal) modal.classList.add('hidden');
+      syncRoleButtonsActiveState();
+    }
+
+    function commitLogin(e) {
+      if (e) e.preventDefault();
+      const userVal = document.getElementById('loginUser').value;
+      const passVal = document.getElementById('loginPassword').value;
+
+      if (userVal === "ok" && passVal === "ok") {
+        currentRole = 'Admin';
+        applyRoleUI('Admin');
+        closeLoginModal();
+        showToast("Login Admin Berhasil!", "success");
+      } else {
+        showToast("User atau Password salah!", "danger");
+      }
+    }
+
+    function applyRoleUI(role) {
+      const badge = document.getElementById('profileRoleBadge');
+      const name = document.getElementById('profileNameDisplay');
+      const authIndicator = document.getElementById('authKatalogIndicator');
+
+      if (role === 'Admin') {
+        if (name) name.innerText = "System Administrator (Full)";
+        if (badge) badge.innerText = "Peran: Administrator";
+        if (authIndicator) authIndicator.innerHTML = `<i class="fa-solid fa-circle-check"></i> Aktif`;
+      } else {
+        if (name) name.innerText = "Guest Engineer";
+        if (badge) badge.innerText = "Peran: Guest";
+        if (authIndicator) authIndicator.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Terkunci`;
+      }
+
+      // SINKRONISASI TOMBOL TAMBAH KABEL BARU: Diaktifkan paksa agar tidak terkunci
+      const btnNewCable = document.getElementById('btnAddNewCable');
+      if (btnNewCable) {
+        btnNewCable.removeAttribute('disabled');
+        btnNewCable.classList.remove('opacity-50');
+      }
+
+      syncRoleButtonsActiveState();
+
+      if (activeTab === 'catalog') renderKabelCatalog();
+      if (activeTab === 'tray-templates') renderTrayTemplates();
+    }
+
+    function syncRoleButtonsActiveState() {
+      const btnGuest = document.getElementById('btnRoleGuest');
+      const btnAdmin = document.getElementById('btnRoleAdmin');
+      const pBtnGuest = document.getElementById('profileBtnGuest');
+      const pBtnAdmin = document.getElementById('profileBtnAdmin');
+
+      if (currentRole === 'Admin') {
+        if (btnAdmin) btnAdmin.className = "px-3 py-1 rounded-md transition-all bg-orange-600 text-white";
+        if (btnGuest) btnGuest.className = "px-3 py-1 rounded-md transition-all text-white/70 hover:text-white";
+        
+        if (pBtnAdmin) pBtnAdmin.className = "py-2.5 rounded-xl border-2 border-orange-500 bg-orange-500/10 text-orange-500 text-xs font-black active:scale-95 transition-transform";
+        if (pBtnGuest) pBtnGuest.className = "py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 text-slate-500 text-xs font-black active:scale-95 transition-transform";
+      } else {
+        if (btnGuest) btnGuest.className = "px-3 py-1 rounded-md transition-all bg-orange-600 text-white";
+        if (btnAdmin) btnAdmin.className = "px-3 py-1 rounded-md transition-all text-white/70 hover:text-white";
+        
+        if (pBtnGuest) pBtnGuest.className = "py-2.5 rounded-xl border-2 border-orange-500 bg-orange-500/10 text-orange-500 text-xs font-black active:scale-95 transition-transform";
+        if (pBtnAdmin) pBtnAdmin.className = "py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 text-slate-500 text-xs font-black active:scale-95 transition-transform";
+      }
+    }
+
+    function addSelectedCableRow(cableId = "", qty = 1) {
+      const container = document.getElementById('simCableList');
+      if(!container) return;
+      const rowId = 'cable-row-' + Date.now() + Math.random().toString(36).substr(2, 4);
+      let optionsHTML = "";
+      dbKabel.forEach(k => {
+        const selected = k.id === cableId ? "selected" : "";
+        optionsHTML += `<option value="${k.id}" ${selected}>${k.nama} (De: ${k.diameter}mm)</option>`;
+      });
+      const row = document.createElement('div');
+      row.id = rowId;
+      row.className = "flex items-center gap-2 bg-slate-50 dark:bg-slate-950 p-2 rounded-xl border border-slate-100 shadow-sm";
+      row.innerHTML = `
+        <select onchange="runCalculation()" class="flex-grow min-w-0 px-3 py-1.5 rounded-lg border bg-white dark:bg-white text-xs font-bold text-slate-950 focus:outline-none dark:text-slate-900 font-bold">
+          ${optionsHTML}
+        </select>
+        <div class="flex items-center gap-1.5 w-24 font-bold">
+          <button type="button" onclick="changeQty('${rowId}', -1)" class="w-7 h-7 bg-white dark:bg-slate-900 border flex items-center justify-center rounded-lg text-xs hover:border-orange-500"><i class="fa-solid fa-minus"></i></button>
+          <input type="number" value="${qty}" oninput="runCalculation()" min="1" class="qty-input w-9 text-center bg-transparent text-xs font-black text-slate-850 dark:text-slate-100">
+          <button type="button" onclick="changeQty('${rowId}', 1)" class="w-7 h-7 bg-white dark:bg-slate-900 border flex items-center justify-center rounded-lg text-xs hover:border-orange-500"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <button type="button" onclick="removeSelectedCableRow('${rowId}')" class="w-7 h-7 bg-red-500/10 text-red-500 rounded-lg flex items-center justify-center text-xs hover:bg-red-500"><i class="fa-solid fa-trash-can"></i></button>
+      `;
+      container.appendChild(row);
+      runCalculation();
+    }
+
+    function removeSelectedCableRow(rowId) {
+      const container = document.getElementById('simCableList');
+      if (container && container.children.length > 1) {
+        const row = document.getElementById(rowId);
+        if (row) {
+          row.remove();
+          runCalculation();
+        }
+      }
+    }
+
+    function changeQty(rowId, modifier) {
+      const row = document.getElementById(rowId);
+      if (!row) return;
+      const input = row.querySelector('.qty-input');
+      let val = parseInt(input.value) || 1;
+      val += modifier; if (val < 1) val = 1;
+      input.value = val;
+      runCalculation();
+    }
+
+    function runCalculation() {
+      const customWidthEl = document.getElementById('simCustomWidth');
+      const customHeightEl = document.getElementById('simCustomHeight');
+      const customMaxLoadEl = document.getElementById('simCustomMaxLoad');
+      
+      const targetWidth = parseFloat(customWidthEl ? customWidthEl.value : 300) || 300;
+      const targetHeight = parseFloat(customHeightEl ? customHeightEl.value : 100) || 100;
+      const targetMaxLoad = parseFloat(customMaxLoadEl ? customMaxLoadEl.value : 60) || 60;
+      
+      const sparePercentEl = document.getElementById('simSpareSpace');
+      const sparePercent = parseFloat(sparePercentEl ? sparePercentEl.value : 20) || 0;
+      
+      const checkedMethod = document.querySelector('input[name="layoutMethod"]:checked');
+      const method = checkedMethod ? checkedMethod.value : "Flat Touching";
+
+      let totalWeight = 0; 
+      let totalRequiredWidth = 0; 
+      let targetCablesList = [];
+      
+      const listEl = document.getElementById('simCableList');
+      if (listEl) {
+        const rows = listEl.children;
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const selectEl = row.querySelector('select');
+          const qtyEl = row.querySelector('.qty-input');
+          if (selectEl && qtyEl) {
+            const cableId = selectEl.value;
+            const qty = parseInt(qtyEl.value) || 0;
+            const k = dbKabel.find(item => item.id === cableId);
+            if (k && qty > 0) {
+              totalWeight += k.berat * qty;
+              let lineSpace = k.diameter * qty;
+              if (method === "Flat Spaced") lineSpace = (k.diameter * qty) + ((qty - 1) * 10);
+              else if (method === "Trefoil") lineSpace = (k.diameter * 2) * Math.ceil(qty / 3);
+              totalRequiredWidth += lineSpace;
+              for (let q = 0; q < qty; q++) {
+                targetCablesList.push({ id: k.id, diameter: k.diameter, nama: k.nama, berat: k.berat });
+              }
+            }
+          }
+        }
+      }
+
+      const effectiveWidth = targetWidth * (1 - (sparePercent / 100));
+      let statusSpace = totalRequiredWidth <= effectiveWidth ? "AMAN" : (totalRequiredWidth <= targetWidth ? "KAPASITAS CADANGAN TERPAKAI" : "OVER CAPACITY");
+
+      const resTotalWidthEl = document.getElementById('resTotalWidth');
+      const resEffectiveWidthEl = document.getElementById('resEffectiveWidth');
+      const resTotalWeightEl = document.getElementById('resTotalWeight');
+      const resMaxLoadEl = document.getElementById('resMaxLoad');
+      
+      if (resTotalWidthEl) resTotalWidthEl.innerText = `${totalRequiredWidth.toFixed(1)} mm`;
+      if (resEffectiveWidthEl) resEffectiveWidthEl.innerText = `${effectiveWidth.toFixed(1)} mm`;
+      if (resTotalWeightEl) resTotalWeightEl.innerText = `${totalWeight.toFixed(2)} kg/m`;
+      if (resMaxLoadEl) resMaxLoadEl.innerText = `${targetMaxLoad.toFixed(2)} kg/m`;
+
+      const statusBadge = document.getElementById('statusSpaceBadge');
+      if (statusBadge) {
+        statusBadge.innerText = statusSpace;
+        statusBadge.className = "text-xs px-3 py-1 font-extrabold rounded-full " + 
+          (statusSpace === "AMAN" ? "bg-emerald-500/10 text-emerald-400" : 
+           statusSpace === "KAPASITAS CADANGAN TERPAKAI" ? "bg-amber-500/10 text-amber-500" : "bg-red-500/10 text-red-500");
+      }
+
+      const totalTrayArea = targetWidth * targetHeight;
+      let totalCablesArea = 0;
+      targetCablesList.forEach(c => { totalCablesArea += Math.PI * Math.pow(c.diameter / 2, 2); });
+      const fillRatio = (totalCablesArea / totalTrayArea) * 100;
+
+      let deratingFactor = 1.00;
+      if (method === "Flat Touching" || method === "Trefoil") {
+        const numCablesOrGroups = method === "Trefoil" ? Math.ceil(targetCablesList.length / 3) : targetCablesList.length;
+        if (numCablesOrGroups === 2) deratingFactor = 0.85;
+        else if (numCablesOrGroups === 3) deratingFactor = 0.79;
+        else if (numCablesOrGroups <= 5) deratingFactor = 0.75;
+        else if (numCablesOrGroups <= 8) deratingFactor = 0.72;
+        else if (numCablesOrGroups > 8) deratingFactor = 0.70;
+      }
+
+      if (currentLayoutMethod !== method || currentTrayWidth !== targetWidth || cableInstances.length !== targetCablesList.length) {
+        generateDefaultPositions(targetCablesList, method, targetWidth, targetHeight);
+        currentLayoutMethod = method; 
+        currentTrayWidth = targetWidth;
+      } else {
+        drawTrayFromState();
+      }
+
+      const warningBox = document.getElementById('weightWarningBox');
+      if (warningBox) {
+        warningBox.className = totalWeight > targetMaxLoad ? "p-3 bg-red-950/30 border border-red-900/50 text-red-400 text-xs rounded-xl flex items-start gap-2.5" : "hidden";
+      }
+      
+      syncLiveReportPreview(targetCablesList, totalRequiredWidth, effectiveWidth, totalWeight, targetMaxLoad, statusSpace, fillRatio, deratingFactor);
+    }
+
+    /**
+     * Helper terpadu untuk memastikan rendering 1:1 fisik proporsional asli
+     */
+    function getTrayLayoutCoords(canvas, width, height) {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width || 280;
+      canvas.height = rect.height || 150;
+
+      const padX = 20;
+      const padY = 20;
+      const maxW = canvas.width - (padX * 2);
+      const maxH = canvas.height - (padY * 2);
+
+      // Penskalaan seragam (Uniform Scale Factor) menjamin akurasi aspek rasio 1:1 secara fisik
+      const scale = Math.min(maxW / width, maxH / height);
+      const trayWidthPx = width * scale;
+      const trayHeightPx = height * scale;
+
+      // Posisikan sasis tray tepat di tengah kanvas
+      const trayX = (canvas.width - trayWidthPx) / 2;
+      const trayY = (canvas.height - trayHeightPx) / 2;
+
+      return { scale, trayX, trayY, trayWidthPx, trayHeightPx };
+    }
+
+    /**
+     * Membangun sirkuit rendering koordinat default (PROPORSI ASLI 1:1 REAL)
+     */
+    function generateDefaultPositions(cables, method, width, height) {
+      const canvas = document.getElementById('trayVisualizer');
+      if(!canvas) return;
+
+      const { scale, trayX, trayY, trayWidthPx, trayHeightPx } = getTrayLayoutCoords(canvas, width, height);
+      let currentX = trayX + 4;
+      const baseLineY = trayY + trayHeightPx - 2;
+
+      cableInstances = [];
+      cables.forEach((c, idx) => {
+        const radiusPx = (c.diameter * scale) / 2;
+        let drawX = currentX + radiusPx; let drawY = baseLineY - radiusPx;
+        
+        if (method === "Flat Spaced") {
+          currentX += 4 * scale;
+        } else if (method === "Trefoil") {
+          const groupOffset = idx % 3;
+          if (groupOffset === 0) {
+            drawX = currentX + radiusPx;
+            drawY = baseLineY - radiusPx;
+          } else if (groupOffset === 1) {
+            drawX = currentX + radiusPx;
+            drawY = baseLineY - radiusPx;
+          } else if (groupOffset === 2) {
+            const prev1 = cableInstances[idx - 1]; 
+            const prev2 = cableInstances[idx - 2]; 
+            if (prev1 && prev2) {
+              drawX = (prev1.x + prev2.x) / 2;
+              const dx = Math.abs(prev1.x - prev2.x) / 2;
+              const rSum = prev1.radius + radiusPx;
+              const dy = Math.sqrt(Math.max(0, rSum * rSum - dx * dx));
+              drawY = prev1.y - dy;
+            } else {
+              drawX = currentX - radiusPx;
+              drawY = baseLineY - radiusPx - (radiusPx * Math.sqrt(3));
+            }
+          }
+        }
+        
+        cableInstances.push({ cableId: c.id, nama: c.nama.split(" ")[0], fullName: c.nama, x: drawX, y: drawY, radius: radiusPx > 2 ? radiusPx : 2, diameter: c.diameter, berat: c.berat });
+        if (method === "Trefoil") { if (idx % 3 !== 2) currentX += (radiusPx * 2); } else { currentX += (radiusPx * 2); }
+      });
+      drawTrayFromState();
+    }
+
+    /**
+     * Menggambar Lintasan dari state koordinat
+     */
+    function drawTrayFromState() {
+      const canvas = document.getElementById('trayVisualizer');
+      if(!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      
+      // Ambil kordinat 1:1 fisik asli
+      const targetWidth = parseFloat(document.getElementById('simCustomWidth').value) || 100;
+      const targetHeight = parseFloat(document.getElementById('simCustomHeight').value) || 100;
+      const { scale, trayX, trayY, trayWidthPx, trayHeightPx } = getTrayLayoutCoords(canvas, targetWidth, targetHeight);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = isDarkMode ? "#0d1321" : "#f1f5f9";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const sparePercent = parseFloat(document.getElementById('simSpareSpace').value) || 0;
+      const effectiveWidthPx = trayWidthPx * (1 - (sparePercent / 100));
+      
+      // Draw background tray
+      ctx.fillStyle = isDarkMode ? "rgba(249, 115, 22, 0.08)" : "rgba(249, 115, 22, 0.05)";
+      ctx.fillRect(trayX, trayY, trayWidthPx, trayHeightPx);
+
+      ctx.fillStyle = isDarkMode ? "rgba(255, 255, 255, 0.05)" : "rgba(100, 116, 139, 0.1)";
+      ctx.fillRect(trayX + effectiveWidthPx, trayY, trayWidthPx - effectiveWidthPx, trayHeightPx);
+
+      ctx.strokeStyle = "#f97316"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(trayX, trayY); ctx.lineTo(trayX, trayY + trayHeightPx); ctx.lineTo(trayX + trayWidthPx, trayY + trayHeightPx); ctx.lineTo(trayX + trayWidthPx, trayY); ctx.stroke();
+
+      cableInstances.forEach((ci, idx) => {
+        ctx.beginPath(); ctx.arc(ci.x, ci.y, ci.radius, 0, Math.PI * 2);
+        ctx.fillStyle = isDragging && idx === activeDragIndex ? "#ef4444" : (isDarkMode ? "#38bdf8" : "#0284c7");
+        ctx.fill(); ctx.strokeStyle = "#FFFFFF"; ctx.stroke();
+        
+        if (ci.radius > 10) {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.font = "bold 8px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(ci.nama, ci.x, ci.y);
+        }
+      });
+    }
+
+    function setupCanvasDragListeners() {
+      const canvas = document.getElementById('trayVisualizer');
+      if(!canvas) return;
+      canvas.addEventListener('mousedown', dragStart); canvas.addEventListener('mousemove', dragMove); canvas.addEventListener('mouseup', dragEnd);
+      canvas.addEventListener('touchstart', dragStart, { passive: false }); canvas.addEventListener('touchmove', dragMove, { passive: false }); canvas.addEventListener('touchend', dragEnd);
+    }
+
+    function dragStart(e) {
+      const canvas = document.getElementById('trayVisualizer');
+      if(!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const mouseX = (clientX - rect.left) * (canvas.width / rect.width);
+      const mouseY = (clientY - rect.top) * (canvas.height / rect.height);
+
+      for (let i = 0; i < cableInstances.length; i++) {
+        const ci = cableInstances[i];
+        if (Math.sqrt(Math.pow(mouseX - ci.x, 2) + Math.pow(mouseY - ci.y, 2)) <= ci.radius) {
+          activeDragIndex = i; isDragging = true; break;
+        }
+      }
+    }
+
+    function dragMove(e) {
+      if (!isDragging || activeDragIndex === -1) return; e.preventDefault();
+      const canvas = document.getElementById('trayVisualizer');
+      if(!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const targetWidth = parseFloat(document.getElementById('simCustomWidth').value) || 100;
+      const targetHeight = parseFloat(document.getElementById('simCustomHeight').value) || 100;
+      
+      const { scale, trayX, trayY, trayWidthPx, trayHeightPx } = getTrayLayoutCoords(canvas, targetWidth, targetHeight);
+
+      let dragX = (clientX - rect.left) * (canvas.width / rect.width);
+      let dragY = (clientY - rect.top) * (canvas.height / rect.height);
+      const ci = cableInstances[activeDragIndex];
+      if (dragX < trayX + ci.radius) dragX = trayX + ci.radius;
+      if (dragX > trayX + trayWidthPx - ci.radius) dragX = trayX + trayWidthPx - ci.radius;
+      if (dragY < trayY + ci.radius) dragY = trayY + ci.radius;
+      if (dragY > trayY + trayHeightPx - ci.radius) dragY = trayY + trayHeightPx - ci.radius;
+      ci.x = dragX; ci.y = dragY; drawTrayFromState();
+      
+      const printImg = document.getElementById('printCanvasImage');
+      if (printImg) printImg.src = canvas.toDataURL("image/png");
+    }
+
+    function dragEnd() { isDragging = false; activeDragIndex = -1; }
+    function resetCablePositionsToDefault() { currentLayoutMethod = ''; runCalculation(); }
+
+    function syncLiveReportPreview(cables=[], totalWidth=0, effectiveWidth=0, totalWeight=0, maxLoad=0, statusSpace="AMAN", fillRatio=0, deratingFactor=1.00) {
+      if(!document.getElementById('printProjName')) return;
+      document.getElementById('printProjName').innerText = document.getElementById('simProjName').value || "Proyek Tanpa Nama";
+      document.getElementById('printTrayType').innerText = document.getElementById('simTrayType').value;
+      
+      const checkedMethod = document.querySelector('input[name="layoutMethod"]:checked');
+      document.getElementById('printLayoutMethod').innerText = checkedMethod ? checkedMethod.value : "Flat Touching";
+      
+      document.getElementById('printTrayDim').innerText = (document.getElementById('simCustomWidth').value || "0") + " x " + (document.getElementById('simCustomHeight').value || "0") + " mm";
+      document.getElementById('printSpareFactor').innerText = document.getElementById('simSpareSpace').value + "%";
+      document.getElementById('printDesignerRole').innerText = currentRole;
+      document.getElementById('printTotalWidthVal').innerText = totalWidth.toFixed(1) + " mm";
+      document.getElementById('printEffectiveWidthVal').innerText = effectiveWidth.toFixed(1) + " mm";
+      document.getElementById('printTotalWeightVal').innerText = totalWeight.toFixed(2) + " kg/m";
+      document.getElementById('printMaxLoadVal').innerText = maxLoad.toFixed(2) + " kg/m";
+      document.getElementById('printStatusSpaceVal').innerText = statusSpace;
+      document.getElementById('printFillRatioVal').innerText = fillRatio.toFixed(1) + "%";
+      document.getElementById('printDeratingVal').innerText = deratingFactor.toFixed(2);
+
+      const tableBody = document.getElementById('printCableSpecsTableBody');
+      if (!tableBody) return;
+      if (!cables || cables.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-slate-400">Tidak ada komponen kabel aktif.</td></tr>`;
+      } else {
+        let grouped = {};
+        cables.forEach(c => {
+          if (!grouped[c.id]) grouped[c.id] = { name: c.nama || c.fullName, qty: 0, diameter: c.diameter, berat: c.berat };
+          grouped[c.id].qty++;
+        });
+        let rowsHtml = "";
+        for (let key in grouped) {
+          let item = grouped[key];
+          rowsHtml += `
+            <tr class="border-b border-slate-100">
+              <td class="p-2 font-bold text-slate-900">${item.name}</td>
+              <td class="p-2 text-center font-bold">${item.qty} pcs</td>
+              <td class="p-2 text-center">${item.diameter} mm</td>
+              <td class="p-2 text-center">${item.berat.toFixed(3)} kg/m</td>
+              <td class="p-2 text-center font-bold text-orange-600">${(item.qty * item.berat).toFixed(3)} kg/m</td>
+            </tr>`;
+        }
+        tableBody.innerHTML = rowsHtml;
+      }
+      setTimeout(() => {
+        const canvas = document.getElementById('trayVisualizer');
+        if (canvas) {
+          const printImg = document.getElementById('printCanvasImage');
+          if (printImg) printImg.src = canvas.toDataURL("image/png");
+        }
+      }, 50);
+      document.getElementById('printReportTimestamp').innerText = new Date().toLocaleString('id-ID');
+    }
+
+    function exportSimulationPDF() {
+      const element = document.getElementById('printReportArea');
+      if (!element) return;
+      const opt = { margin: 0.4, filename: 'Engineering_Report.pdf', jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } };
+      html2pdf().from(element).set(opt).save();
+    }
+    
+    function printSimulationReport() { window.print(); }
+
+    function openCableFormModal(isEdit, id = "") {
+      const modal = document.getElementById('modalKabel');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      if (isEdit) {
+        document.getElementById('modalKabelTitle').innerText = "Edit Katalog Kabel";
+        const k = dbKabel.find(item => item.id === id);
+        if (k) {
+          document.getElementById('formKabelId').value = k.id;
+          document.getElementById('formKabelNama').value = k.nama;
+          document.getElementById('formKabelTipeCore').value = k.tipeCore;
+          document.getElementById('formKabelDiameter').value = k.diameter;
+          document.getElementById('formKabelMaxCurrent').value = k.maxCurrent;
+          document.getElementById('formKabelBerat').value = k.berat;
+        }
+      } else {
+        document.getElementById('modalKabelTitle').innerText = "Tambah Kabel Baru";
+        document.getElementById('formKabelId').value = "";
+        document.getElementById('formKabelNama').value = "";
+        document.getElementById('formKabelDiameter').value = "";
+        document.getElementById('formKabelMaxCurrent').value = "";
+        document.getElementById('formKabelBerat').value = "";
+      }
+    }
+
+    function closeCableFormModal() {
+      const modal = document.getElementById('modalKabel');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function commitSaveCable(e) {
+      if(e) e.preventDefault();
+      const id = document.getElementById('formKabelId').value;
+      const payload = {
+        id: id || `KAB-${String(dbKabel.length + 1).padStart(4, '0')}`,
+        nama: document.getElementById('formKabelNama').value || "Kabel Baru Kustom",
+        tipeCore: document.getElementById('formKabelTipeCore').value,
+        diameter: parseFloat(document.getElementById('formKabelDiameter').value) || 10,
+        maxCurrent: parseFloat(document.getElementById('formKabelMaxCurrent').value) || 30,
+        berat: parseFloat(document.getElementById('formKabelBerat').value) || 0.2
+      };
+
+      if (id) {
+        const idx = dbKabel.findIndex(item => item.id === id);
+        if (idx !== -1) dbKabel[idx] = payload;
+      } else {
+        dbKabel.push(payload);
+      }
+
+      showToast("Katalog kabel master diperbarui!", "success");
+      runLocalInitialization();
+      closeCableFormModal();
+    }
+
+    function openTrayFormModal(isEdit, id = "") {
+      const modal = document.getElementById('modalTray');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      if (isEdit) {
+        document.getElementById('modalTrayTitle').innerText = "Edit Template Tray";
+        const t = dbTray.find(item => item.id === id);
+        if (t) {
+          document.getElementById('formTrayId').value = t.id;
+          document.getElementById('formTrayNama').value = t.nama;
+          document.getElementById('formTrayLebar').value = t.lebar;
+          document.getElementById('formTrayTinggi').value = t.tinggi;
+          document.getElementById('formTrayMaxLoad').value = t.maxLoad;
+        }
+      } else {
+        document.getElementById('modalTrayTitle').innerText = "Tambah Template Tray";
+        document.getElementById('formTrayId').value = "";
+        document.getElementById('formTrayNama').value = "";
+        document.getElementById('formTrayLebar').value = "";
+        document.getElementById('formTrayTinggi').value = "";
+        document.getElementById('formTrayMaxLoad').value = "";
+      }
+    }
+    
+    function closeTrayFormModal() {
+      const modal = document.getElementById('modalTray');
+      if (modal) modal.classList.add('hidden');
+    }
+    
+    function commitSaveTray(e) {
+      if(e) e.preventDefault();
+      const id = document.getElementById('formTrayId').value;
+      const payload = {
+        id: id || `TRY-${String(dbTray.length + 1).padStart(4, '0')}`,
+        nama: document.getElementById('formTrayNama').value || "Template Tray Baru",
+        lebar: parseFloat(document.getElementById('formTrayLebar').value) || 300,
+        tinggi: parseFloat(document.getElementById('formTrayTinggi').value) || 100,
+        maxLoad: parseFloat(document.getElementById('formTrayMaxLoad').value) || 60
+      };
+
+      if (id) {
+        const idx = dbTray.findIndex(item => item.id === id);
+        if (idx !== -1) dbTray[idx] = payload;
+      } else {
+        dbTray.push(payload);
+      }
+
+      showToast("Template tray master diperbarui!", "success");
+      runLocalInitialization();
+      closeTrayFormModal();
+    }
+
+    function filterCatalogType(type) { selectedCatalogType = type; renderKabelCatalog(); }
+    
+    function filterCatalog() { renderKabelCatalog(); }
+
+    function renderKabelCatalog() {
+      const container = document.getElementById('catalogGridContainer');
+      if(!container) return; container.innerHTML = "";
+      const searchQuery = document.getElementById('catalogSearchInput') ? document.getElementById('catalogSearchInput').value.toLowerCase() : "";
+      let filtered = dbKabel;
+      
+      if (selectedCatalogType !== 'All') {
+        filtered = filtered.filter(k => k.nama.toUpperCase().startsWith(selectedCatalogType.toUpperCase()));
+      }
+      if (searchQuery) {
+        filtered = filtered.filter(k => k.nama.toLowerCase().includes(searchQuery));
+      }
+      
+      filtered.forEach(k => {
+        const card = document.createElement('div'); card.className = "bg-white dark:bg-slate-900 border p-4 rounded-2xl shadow-sm space-y-2";
+        card.innerHTML = `<h4 class="font-black text-sm">${k.nama}</h4><p class="text-[10px] text-slate-400 font-bold uppercase">${k.tipeCore} | ${k.diameter}mm | ${k.berat} kg/m</p>`;
+        container.appendChild(card);
+      });
+    }
+
+    function renderTrayTemplates() {
+      const container = document.getElementById('trayGridContainer');
+      if(!container) return; container.innerHTML = "";
+      dbTray.forEach(t => {
+        const card = document.createElement('div'); card.className = "bg-white dark:bg-slate-900 border p-4 rounded-2xl shadow-sm flex justify-between items-center";
+        card.innerHTML = `<div><h4 class="font-black text-sm">${t.nama}</h4><p class="text-[10px] text-slate-400 font-bold">Max Load: ${t.maxLoad} kg/m</p></div>`;
+        container.appendChild(card);
+      });
+    }
+
+    // ====================================================================
+    // PEMERIKSAAN & PERBAIKAN FITUR SIMPAN LAPORAN KE GOOGLE SHEETS / LOKAL
+    // ====================================================================
+    function commitSaveSimulation() {
+      const projName = document.getElementById('simProjName').value || "Proyek Tanpa Nama";
+      const trayType = document.getElementById('simTrayType').value;
+      const customWidth = parseFloat(document.getElementById('simCustomWidth').value) || 300;
+      const customHeight = parseFloat(document.getElementById('simCustomHeight').value) || 100;
+      const customMaxLoad = parseFloat(document.getElementById('simCustomMaxLoad').value) || 60;
+      const sparePercent = document.getElementById('simSpareSpace').value;
+      
+      const checkedMethod = document.querySelector('input[name="layoutMethod"]:checked');
+      const method = checkedMethod ? checkedMethod.value : "Flat Touching";
+
+      let totalWeight = 0;
+      let totalRequiredWidth = 0;
+      const cableDetails = [];
+
+      const listEl = document.getElementById('simCableList');
+      if (listEl) {
+        const rows = listEl.children;
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const selectEl = row.querySelector('select');
+          const qtyEl = row.querySelector('.qty-input');
+          if (selectEl && qtyEl) {
+            const cableId = selectEl.value;
+            const qty = parseInt(qtyEl.value) || 0;
+            const k = dbKabel.find(item => item.id === cableId);
+            if (k && qty > 0) {
+              totalWeight += k.berat * qty;
+              let lineSpace = k.diameter * qty;
+              if (method === "Flat Spaced") lineSpace = (k.diameter * qty) + ((qty - 1) * 10);
+              else if (method === "Trefoil") lineSpace = (k.diameter * 2) * Math.ceil(qty / 3);
+              totalRequiredWidth += lineSpace;
+
+              // Detail bundle untuk plugin Revit (per jenis kabel)
+              cableDetails.push({
+                id: k.id,
+                nama: k.nama,
+                tipeCore: k.tipeCore,
+                diameter: k.diameter,
+                berat: k.berat,
+                qty: qty
+              });
+            }
+          }
+        }
+      }
+
+      const effectiveWidth = customWidth * (1 - (parseFloat(sparePercent) / 100));
+      let statusSpace = totalRequiredWidth <= effectiveWidth ? "AMAN" : (totalRequiredWidth <= customWidth ? "KAPASITAS CADANGAN TERPAKAI" : "OVER CAPACITY");
+
+      const payload = {
+        namaProyek: projName,
+        jenisTray: trayType,
+        lebarTray: customWidth,
+        metode: method,
+        persenSpare: sparePercent + "%",
+        totalLebarKabel: totalRequiredWidth,
+        totalBerat: totalWeight,
+        status: statusSpace,
+        rekomendasi: totalWeight > customMaxLoad ? "Warning Overload Beban!" : "-",
+        user: currentRole === 'Admin' ? "Admin Utama" : "Guest Engineer",
+        // Detail lengkap untuk plugin Revit (tersimpan di kolom Detail_JSON)
+        detail: {
+          tray: {
+            jenis: trayType,
+            lebar: customWidth,
+            tinggi: customHeight,
+            maxLoad: customMaxLoad
+          },
+          metode: method,
+          spare: sparePercent + "%",
+          kabel: cableDetails
+        }
+      };
+
+      showToast("Menyimpan simulasi ke riwayat...", "warning");
+
+      function onSaveSuccess(response) {
+        if (response && response.success) {
+          payload.id = response.id;
+          payload.tanggal = response.timestamp;
+          dbHistory.unshift(payload);
+          runLocalInitialization();
+          showToast("Simulasi berhasil disimpan ke Google Sheets! ID: " + response.id, "success");
+        } else {
+          showToast("Gagal menyimpan ke Google Sheets: " + (response ? response.error : "tanpa respons"), "danger");
+        }
+      }
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        try {
+          google.script.run
+            .withSuccessHandler(onSaveSuccess)
+            .withFailureHandler(function(err) {
+              saveSimulationLocally(payload);
+            })
+            .saveSimulation(payload);
+        } catch (e) {
+          saveSimulationLocally(payload);
+        }
+      } else if (API_URL) {
+        apiPost("saveSimulation", payload)
+          .then(onSaveSuccess)
+          .catch(function(err) {
+            console.warn("Gagal menyimpan ke database online, fallback lokal.", err);
+            saveSimulationLocally(payload);
+          });
+      } else {
+        saveSimulationLocally(payload);
+      }
+    }
+
+    function saveSimulationLocally(payload) {
+      const now = new Date();
+      const dateString = now.getFullYear() + 
+        ("0" + (now.getMonth() + 1)).slice(-2) + 
+        ("0" + now.getDate()).slice(-2);
+      const timestamp = ("0" + now.getDate()).slice(-2) + "/" + 
+        ("0" + (now.getMonth() + 1)).slice(-2) + "/" + 
+        now.getFullYear() + " " + 
+        ("0" + now.getHours()).slice(-2) + ":" + 
+        ("0" + now.getMinutes()).slice(-2) + ":" + 
+        ("0" + now.getSeconds()).slice(-2);
+      
+      const nextNum = dbHistory.length + 1;
+      const suffix = ("0000" + nextNum).slice(-4);
+      payload.id = "SIM-" + dateString + "-" + suffix;
+      payload.tanggal = timestamp;
+
+      dbHistory.unshift(payload);
+      runLocalInitialization();
+      showToast("Simulasi berhasil disimpan secara lokal!", "success");
+    }
+
+    function filterHistoryType(type) {
+      selectedHistoryFilterType = type;
+      document.querySelectorAll('.history-tab-btn').forEach(btn => {
+        if (btn.innerText.toLowerCase() === type.toLowerCase() || (type === 'All' && btn.innerText === 'Semua Jenis')) {
+          btn.className = "history-tab-btn px-4 py-2 text-xs font-bold rounded-xl whitespace-nowrap transition-all bg-orange-500 text-white shadow-md";
+        } else {
+          btn.className = "history-tab-btn px-4 py-2 text-xs font-bold text-slate-500 rounded-xl whitespace-nowrap bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800";
+        }
+      });
+      renderHistoryList(true);
+    }
+
+    // TEMA TOGGLE SINKRONISASI
+    function toggleTheme() {
+      const html = document.documentElement;
+      const themeIcon = document.getElementById('themeIcon');
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        if (themeIcon) themeIcon.className = "fa-solid fa-moon text-sm";
+      } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        if (themeIcon) themeIcon.className = "fa-solid fa-sun text-sm";
+      }
+      drawTrayFromState();
+    }
+
+    function triggerHistorySearch() {
+      currentSearchQuery = document.getElementById('mainSearchInput').value;
+      renderHistoryList(true);
+    }
+
+    function renderHistoryList(clearExisting = false) {
+      const container = document.getElementById('historyListContainer');
+      if (!container) return;
+      if (clearExisting) {
+        container.innerHTML = "";
+      }
+
+      let displayList = dbHistory;
+      if (selectedHistoryFilterType !== 'All') {
+        displayList = displayList.filter(h => h.jenisTray.toLowerCase() === selectedHistoryFilterType.toLowerCase());
+      }
+      if (currentSearchQuery) {
+        const q = currentSearchQuery.toLowerCase();
+        displayList = displayList.filter(h => 
+          h.namaProyek.toLowerCase().includes(q) || 
+          h.id.toLowerCase().includes(q) || 
+          h.user.toLowerCase().includes(q)
+        );
+      }
+
+      if (displayList.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-10 bg-white dark:bg-slate-900 p-8 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+            <i class="fa-solid fa-folder-open text-4xl text-slate-300 dark:text-slate-700 mb-3"></i>
+            <p class="text-sm font-bold text-slate-400">Tidak ada riwayat simulasi yang cocok.</p>
+          </div>
+        `;
+        return;
+      }
+
+      displayList.forEach(item => {
+        let badgeClass = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+        if (item.status === "KAPASITAS CADANGAN TERPAKAI") {
+          badgeClass = "bg-amber-500/10 text-amber-500 border border-amber-500/20";
+        } else if (item.status === "OVER CAPACITY") {
+          badgeClass = "bg-red-500/10 text-red-500 border border-red-500/20";
+        }
+
+        const card = document.createElement('div');
+        card.className = "bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm relative overflow-hidden transition-all hover:shadow-md";
+        card.innerHTML = `
+          <div class="flex justify-between items-start gap-3 pb-3 border-b border-slate-50 dark:border-slate-800">
+            <div>
+              <span class="text-[10px] font-extrabold text-orange-500 tracking-wider">${item.id}</span>
+              <h4 class="text-sm font-black mt-0.5 line-clamp-1">${item.namaProyek}</h4>
+              <p class="text-[10px] text-slate-400 font-bold mt-0.5"><i class="fa-regular fa-clock mr-1"></i>${item.tanggal}</p>
+            </div>
+            <span class="text-[10px] px-2.5 py-1 font-extrabold rounded-full ${badgeClass}">${item.status}</span>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-3 py-3.5 text-xs">
+            <div>
+              <p class="text-[10px] text-slate-400 font-bold">Struktur Tray</p>
+              <p class="font-extrabold dark:text-slate-200">${item.jenisTray} (${item.lebarTray} mm)</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-slate-400 font-bold">Konfigurasi</p>
+              <p class="font-extrabold dark:text-slate-200">${item.metode} (Spare ${item.persenSpare})</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-slate-400 font-bold">Lebar Terpakai</p>
+              <p class="font-extrabold text-orange-500">${item.totalLebarKabel} mm</p>
+            </div>
+            <div>
+              <p class="text-[10px] text-slate-400 font-bold">Total Berat Bundle</p>
+              <p class="font-extrabold text-yellow-500">${Number(item.totalBerat).toFixed(2)} kg/m</p>
+            </div>
+          </div>
+
+          ${item.rekomendasi && item.rekomendasi !== "-" ? `
+          <div class="bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 text-[11px] font-bold text-amber-500 mb-3 flex items-start gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles mt-0.5"></i>
+            <span>${item.rekomendasi}</span>
+          </div>
+          ` : ''}
+
+          <div class="flex justify-between items-center text-[11px] text-slate-400 pt-3 border-t border-slate-50 dark:border-slate-800">
+            <span>Oleh: <strong class="text-slate-500">${item.user}</strong></span>
+            <div class="flex gap-2">
+              <button type="button" onclick="exportSingleReportExcel('${item.id}')" class="px-3 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-extrabold rounded-lg hover:border-orange-500 hover:text-orange-500 flex items-center gap-1">
+                <i class="fa-regular fa-file-excel"></i> Excel
+              </button>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function exportSingleReportExcel(simId) {
+      const item = dbHistory.find(h => h.id === simId);
+      if (!item) return;
+
+      const ws_data = [
+        ["CABLE TRAY PROJECT HUB - LAPORAN ANALISIS TEKNIS"],
+        ["=================================================="],
+        ["ID Simulasi", item.id],
+        ["Tanggal Analisis", item.tanggal],
+        ["Nama Proyek", item.namaProyek],
+        ["Jenis Struktur Tray", item.jenisTray],
+        ["Lebar Tray", `${item.lebarTray} mm`],
+        ["Metode Peletakan", item.metode],
+        ["Spare Space Factor", item.persenSpare],
+        ["Total Lebar Kabel", `${item.totalLebarKabel} mm`],
+        ["Total Berat Bundle", `${Number(item.totalBerat).toFixed(2)} kg/m`],
+        ["Status Otoritas Ruang", item.status],
+        ["Rekomendasi Pintar", item.rekomendasi],
+        ["Dibuat Oleh", item.user]
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, worksheet, "Analisis Laporan");
+      XLSX.writeFile(wb, `${item.id}_Laporan_Analisis.xlsx`);
+      showToast("Laporan Excel berhasil diunduh!", "success");
+    }
+
+    function fetchNextHistoryPage() {
+      showToast(currentLanguage === 'ID' ? "Seluruh riwayat lokal telah dimuat." : "All history has been fully loaded.", "warning");
+    }
+
+    // EVENT LISTENER LOAD AWAL TERPADU AGAR KONTROLLER BERJALAN SEMPURNA
+    window.addEventListener('DOMContentLoaded', () => {
+      // Tema Preferensi
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+        const themeIcon = document.getElementById('themeIcon');
+        if (themeIcon) themeIcon.className = "fa-solid fa-sun text-sm";
+      }
+
+      // Set tanggal saat ini
+      const dateDisplay = document.getElementById('currentDateDisplay');
+      if (dateDisplay) {
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        dateDisplay.innerText = new Date().toLocaleDateString('id-ID', options);
+      }
+      
+      // Inisialisasi visual bahasa awal
+      setLanguage(currentLanguage);
+      
+      // Load data dari Sheet / Local
+      loadInitialData();
+      
+      // Setup drag and drop
+      setupCanvasDragListeners();
+      
+      // Spawn sirkuit baris kabel pertama kali secara otomatis
+      addSelectedCableRow("KAB-0001", 1);
+
+      // Sinkronisasi status peran pertama kali di UI
+      applyRoleUI(currentRole);
+    });
+  </script>
+</body>
+</html>

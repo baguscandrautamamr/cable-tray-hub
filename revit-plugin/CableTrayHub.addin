@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Cable Tray Hub</Name>
+    <Assembly>CableTrayHub\CableTrayHub.Revit.dll</Assembly>
+    <AddInId>7A9C2E4B-51D3-4F8A-9B0C-D6E1F2A3B4C5</AddInId>
+    <FullClassName>CableTrayHub.Revit.App</FullClassName>
+    <VendorId>EBAC</VendorId>
+    <VendorDescription>Cable Tray Project Hub - ebacable.vercel.app</VendorDescription>
+  </AddIn>
+</RevitAddIns>

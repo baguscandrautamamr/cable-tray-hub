@@ -7,6 +7,9 @@ on:
       - ".github/workflows/build-revit-plugin.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -38,3 +41,18 @@ jobs:
           name: CableTrayHub-Revit2025
           path: package/
           if-no-files-found: error
+
+      - name: Zip paket untuk release
+        shell: pwsh
+        run: Compress-Archive -Path package/CableTrayHub-Revit2025 -DestinationPath CableTrayHub-Revit2025.zip -Force
+
+      - name: Publish release "latest" (link unduh publik)
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: latest
+          name: "Plugin Revit 2025 — build terbaru"
+          body: |
+            Build otomatis dari commit ${{ github.sha }}.
+            Ekstrak zip lalu salin isinya ke: %APPDATA%\Autodesk\Revit\Addins\2025\
+          files: CableTrayHub-Revit2025.zip

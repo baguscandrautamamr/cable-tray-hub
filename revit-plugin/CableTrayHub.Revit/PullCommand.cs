@@ -156,12 +156,18 @@ namespace CableTrayHub.Revit
                     bool isChained = chain != null;
                     if (!isChained) chain = segments;
 
-                    // 3c. Gambar conduit per kabel
-                    var slots = new List<CableInfo>();
+                    // 3c. Gambar conduit per kabel — mengikuti POSISI PENAMPANG
+                    // dari kanvas visual website (x dari dinding kiri tray,
+                    // y dari dasar tray). Jika data posisi tidak ada (simulasi
+                    // lama), fallback ke barisan rata di tengah tray.
+                    var slots = new List<(CableInfo Cable, PosXY Pos)>();
                     foreach (var k in route.Kabel)
-                        for (int i = 0; i < k.Qty; i++) slots.Add(k);
+                        for (int i = 0; i < k.Qty; i++)
+                            slots.Add((k, k.Posisi != null && i < k.Posisi.Count ? k.Posisi[i] : null));
 
-                    double maxDeMm = slots.Max(k => k.Diameter);
+                    double trayWmm = sim.Detail?.Tray?.Lebar > 0 ? sim.Detail.Tray.Lebar : 300;
+                    double trayHmm = sim.Detail?.Tray?.Tinggi > 0 ? sim.Detail.Tray.Tinggi : 100;
+                    double maxDeMm = slots.Max(s => s.Cable.Diameter);
                     double spacingFt = (maxDeMm + 2) * MmToFt;
 
                     ElementId levelId = plan.Trays[0].ReferenceLevel?.Id
@@ -170,14 +176,28 @@ namespace CableTrayHub.Revit
                     int created = 0, elbows = 0;
                     for (int slot = 0; slot < slots.Count; slot++)
                     {
-                        CableInfo cable = slots[slot];
-                        double offset = (slot - (slots.Count - 1) / 2.0) * spacingFt;
+                        CableInfo cable = slots[slot].Cable;
+                        PosXY pos = slots[slot].Pos;
+
+                        // Offset penampang relatif sumbu tray (sumbu = tengah lebar & tinggi)
+                        double lat, vert;
+                        if (pos != null)
+                        {
+                            lat = (pos.X - trayWmm / 2.0) * MmToFt;
+                            vert = (pos.Y - trayHmm / 2.0) * MmToFt;
+                        }
+                        else
+                        {
+                            lat = (slot - (slots.Count - 1) / 2.0) * spacingFt;
+                            vert = (cable.Diameter / 2.0 - trayHmm / 2.0) * MmToFt; // duduk di dasar tray
+                        }
+
                         string tag = TagPrefix + route.Key + "|" + cable.Nama;
 
                         var runConduits = new List<Conduit>();
                         if (isChained)
                         {
-                            List<XYZ> pts = BuildOffsetPolyline(chain, offset);
+                            List<XYZ> pts = BuildOffsetPolyline(chain, lat, vert);
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitTypeId, levelId,
@@ -189,10 +209,10 @@ namespace CableTrayHub.Revit
                         {
                             foreach (var seg in chain)
                             {
-                                XYZ n = PerpendicularOf(seg.Direction);
+                                XYZ off = OffsetVector(seg.Direction, lat, vert);
                                 Conduit c = CreateConduit(doc, conduitTypeId, levelId,
-                                    seg.GetEndPoint(0) + n * offset,
-                                    seg.GetEndPoint(1) + n * offset,
+                                    seg.GetEndPoint(0) + off,
+                                    seg.GetEndPoint(1) + off,
                                     cable, tag);
                                 if (c != null) { runConduits.Add(c); created++; }
                             }
@@ -417,34 +437,49 @@ namespace CableTrayHub.Revit
         }
 
         /// <summary>
-        /// Membangun polyline offset sejauh <paramref name="offset"/> dari rantai
+        /// Vektor offset penampang untuk satu segmen: geser ke samping (lat)
+        /// dan ke atas/bawah penampang (vert). Untuk segmen horizontal,
+        /// vert searah sumbu Z (dir × n = +Z).
+        /// </summary>
+        private static XYZ OffsetVector(XYZ direction, double lat, double vert)
+        {
+            XYZ n = PerpendicularOf(direction);
+            XYZ v = direction.CrossProduct(n);
+            if (v.GetLength() < 1e-6) v = XYZ.BasisZ;
+            v = v.Normalize();
+            if (v.Z < 0) v = v.Negate(); // pastikan "atas penampang" mengarah ke atas
+            return n * lat + v * vert;
+        }
+
+        /// <summary>
+        /// Membangun polyline offset (lateral + vertikal penampang) dari rantai
         /// segmen. Titik belokan dihitung dari perpotongan dua garis offset
         /// (miter corner) agar conduit paralel tetap rapi di tikungan.
         /// </summary>
-        private static List<XYZ> BuildOffsetPolyline(List<Line> chain, double offset)
+        private static List<XYZ> BuildOffsetPolyline(List<Line> chain, double lat, double vert)
         {
             var points = new List<XYZ>();
 
-            XYZ n0 = PerpendicularOf(chain[0].Direction);
-            points.Add(chain[0].GetEndPoint(0) + n0 * offset);
+            XYZ off0 = OffsetVector(chain[0].Direction, lat, vert);
+            points.Add(chain[0].GetEndPoint(0) + off0);
 
             for (int i = 0; i < chain.Count - 1; i++)
             {
-                XYZ na = PerpendicularOf(chain[i].Direction);
-                XYZ nb = PerpendicularOf(chain[i + 1].Direction);
+                XYZ offA = OffsetVector(chain[i].Direction, lat, vert);
+                XYZ offB = OffsetVector(chain[i + 1].Direction, lat, vert);
 
-                XYZ a1 = chain[i].GetEndPoint(0) + na * offset;
-                XYZ a2 = chain[i].GetEndPoint(1) + na * offset;
-                XYZ b1 = chain[i + 1].GetEndPoint(0) + nb * offset;
-                XYZ b2 = chain[i + 1].GetEndPoint(1) + nb * offset;
+                XYZ a1 = chain[i].GetEndPoint(0) + offA;
+                XYZ a2 = chain[i].GetEndPoint(1) + offA;
+                XYZ b1 = chain[i + 1].GetEndPoint(0) + offB;
+                XYZ b2 = chain[i + 1].GetEndPoint(1) + offB;
 
                 XYZ corner = IntersectLines(a1, a2 - a1, b1, b2 - b1)
                              ?? (a2 + b1) / 2.0; // segmen paralel/sejajar -> titik tengah
                 points.Add(corner);
             }
 
-            XYZ nLast = PerpendicularOf(chain[^1].Direction);
-            points.Add(chain[^1].GetEndPoint(1) + nLast * offset);
+            XYZ offLast = OffsetVector(chain[^1].Direction, lat, vert);
+            points.Add(chain[^1].GetEndPoint(1) + offLast);
 
             return points;
         }

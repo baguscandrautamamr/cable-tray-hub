@@ -85,6 +85,20 @@ namespace CableTrayHub.Revit
         [JsonPropertyName("diameter")] public double Diameter { get; set; } // mm
         [JsonPropertyName("berat")] public double Berat { get; set; }       // kg/m
         [JsonPropertyName("qty")] public int Qty { get; set; }
+
+        /// <summary>
+        /// Posisi tiap kabel pada penampang tray dari kanvas visual website
+        /// (satu entri per qty): x dari dinding kiri tray, y dari dasar tray,
+        /// dalam mm, titik pusat kabel. Mengikuti metode konfigurasi
+        /// (Flat Touching/Spaced/Trefoil) + hasil drag manual user.
+        /// </summary>
+        [JsonPropertyName("posisi")] public List<PosXY> Posisi { get; set; }
+    }
+
+    public class PosXY
+    {
+        [JsonPropertyName("x")] public double X { get; set; } // mm dari dinding kiri
+        [JsonPropertyName("y")] public double Y { get; set; } // mm dari dasar tray
     }
 
     // ================= PAYLOAD PUSH KE WEBSITE =================

@@ -2106,6 +2106,8 @@ function showToast(message, type = "success") {
     }
 
     function commitSaveSimulation() {
+      // Pastikan kalkulasi & posisi kabel di kanvas penampang sinkron
+      runCalculation();
       // Sinkronkan isi kabel tiap jalur dari DOM ke dbRoutes
       saveCableGroupStates();
 
@@ -2119,6 +2121,27 @@ function showToast(message, type = "success") {
       const method = methodEl ? methodEl.value : 'Flat Touching';
       const statusEl = document.getElementById('statusSpaceBadge');
       const status = statusEl ? statusEl.innerText.trim() : 'AMAN';
+
+      // Konversi posisi kabel di kanvas penampang -> koordinat mm di tray
+      // (x diukur dari dinding kiri tray, y dari dasar tray, titik pusat kabel).
+      // Posisi ini mengikuti metode konfigurasi + hasil drag manual user,
+      // dan dipakai plugin Revit untuk menempatkan conduit persis sama.
+      const cvs = document.getElementById('trayVisualizer');
+      const cvScaleX = cvs ? (cvs.width - 40) / width : 1;
+      const cvTrayX = 20, cvTrayY = 30;
+      const cvTrayHeightPx = Math.min(80, height * cvScaleX);
+      const cvBaseLineY = cvTrayY + cvTrayHeightPx - 2;
+      let instIdx = 0;
+      function nextCablePosMm(diaMm) {
+        if (!cvs || !cableInstances || instIdx >= cableInstances.length) return null;
+        const ci = cableInstances[instIdx++];
+        const rMm = (ci.diameter || diaMm) / 2;
+        let xMm = (ci.x - cvTrayX) / cvScaleX;
+        let yMm = (cvBaseLineY - ci.y) / cvScaleX;
+        xMm = Math.max(rMm, Math.min(width - rMm, xMm));
+        yMm = Math.max(rMm, Math.min(height - rMm, yMm));
+        return { x: Math.round(xMm * 10) / 10, y: Math.round(yMm * 10) / 10 };
+      }
 
       // Detail per jalur (Panel Asal → Tujuan) — dipakai plugin Revit
       let totalWeight = 0;
@@ -2134,9 +2157,17 @@ function showToast(message, type = "success") {
             if (method === 'Flat Spaced') lineSpace = (k.diameter * qty) + ((qty - 1) * 10);
             else if (method === 'Trefoil') lineSpace = (k.diameter * 2) * Math.ceil(qty / 3);
             totalRequiredWidth += lineSpace;
+
+            const posisi = [];
+            for (let q = 0; q < qty; q++) {
+              const p = nextCablePosMm(k.diameter);
+              if (p) posisi.push(p);
+            }
+
             kabelList.push({
               id: k.id, nama: k.nama, tipeCore: k.tipeCore,
-              diameter: k.diameter, berat: k.berat, qty: qty
+              diameter: k.diameter, berat: k.berat, qty: qty,
+              posisi: posisi
             });
           }
         });

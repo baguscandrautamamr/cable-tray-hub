@@ -24,6 +24,16 @@ bisa diakses dari Vercel maupun plugin Revit lewat REST API.
 | `Code.gs` | Backend Apps Script: web app + REST API JSON |
 | `Setup.gs` | Pembuat tabel database di Google Sheets (`initSetup`) + upgrade tanpa hapus data (`upgradeSheets`) |
 | `index.html` | Frontend — bisa di-host di Apps Script ATAU Vercel |
+| `revit-plugin/` | Add-in Revit 2025 (C# .NET 8) — lihat [revit-plugin/README.md](revit-plugin/README.md) |
+
+## Plugin Revit — unduh hasil build
+
+Setiap push, GitHub Actions otomatis mengkompilasi plugin. Cara mengunduh:
+
+1. Buka tab **Actions** di repo GitHub → pilih run terbaru **Build Revit Plugin**
+2. Di bagian *Artifacts*, unduh **CableTrayHub-Revit2025** (zip)
+3. Ekstrak lalu salin isinya ke `%APPDATA%\Autodesk\Revit\Addins\2025\`
+   (petunjuk lengkap di [revit-plugin/README.md](revit-plugin/README.md))
 
 ## Cara Deploy (sekali saja)
 

@@ -1,22 +1,30 @@
-# Cable Tray Hub — Plugin Revit 2025
+# Cable Tray Hub — Plugin Revit 2025 (Pull/Push Sync)
 
-Add-in Revit yang menarik data simulasi kabel dari website Cable Tray Hub
-(database Google Sheets) lalu menggambar **conduit** paralel di sepanjang
-cable tray yang Anda pilih — dari Panel A ke Panel B, lengkap dengan elbow
-di belokan.
+Add-in Revit yang menyinkronkan data simulasi kabel dari website Cable Tray Hub
+ke model Revit, **per jalur Panel Asal → Panel Tujuan**.
 
-## Alur pemakaian
+## Dua tombol di ribbon "Cable Tray Hub"
 
-1. Di **website**: buat simulasi (pilih tray, susun bundle kabel) → klik
-   *Simpan Laporan* → catat **ID simulasi** (misal `SIM-20260717-0002`).
-2. Di **Revit**: ribbon **Cable Tray Hub → Import Simulasi**.
-3. Isi URL API (sekali saja, akan diingat) + ID simulasi → **Ambil Data** —
-   daftar kabel muncul dari database online.
-4. Klik **Lanjut: Pilih Cable Tray** → select segmen-segmen tray dari
-   Panel A ke Panel B → **Finish**.
-5. Plugin menggambar 1 conduit per jalur kabel, paralel mengikuti tray,
-   diameter sesuai diameter luar kabel, dengan nama kabel + ID simulasi
-   tercatat di parameter *Comments* tiap conduit.
+### 🔽 Pull dari Website
+1. Masukkan URL API + ID simulasi (dari tombol **Connect ke Revit** di website)
+   → **Ambil Data** — daftar jalur & kabel tampil.
+2. **Jalur baru**: plugin minta Anda select segmen cable tray dari Panel Asal
+   ke Panel Tujuan (sekali saja — pilihan diingat di dalam file Revit).
+3. **Jalur lama** (pernah di-pull): conduit lama bertanda jalur itu otomatis
+   **dihapus dan digambar ulang** sesuai data website terbaru — sinkron tanpa
+   duplikat, tanpa select ulang.
+4. Conduit digambar paralel mengikuti tray (elbow otomatis di belokan),
+   diameter sesuai De kabel, bertanda `CTH|<jalur>|<nama kabel>` di parameter
+   *Comments*.
+
+> Ubah kabel di website → Simpan → catat ID baru → Pull lagi di Revit →
+> model langsung menyesuaikan.
+
+### 🔼 Push ke Website
+Merangkum semua conduit hasil Pull di model (per jalur: jumlah conduit +
+total panjang meter) dan mengirimnya ke database website — tercatat di sheet
+**Revit_Sync** Google Sheets, jadi engineer tahu jalur mana yang sudah
+dieksekusi di model.
 
 ## Build (butuh .NET 8 SDK, TIDAK butuh Revit terinstall)
 
@@ -25,13 +33,10 @@ cd revit-plugin/CableTrayHub.Revit
 dotnet build -c Release
 ```
 
-Hasil: `bin/Release/CableTrayHub.Revit.dll`
-(Revit API direferensikan lewat paket NuGet `Nice3point.Revit.Api.* 2025`,
-jadi bisa dikompilasi di komputer mana pun.)
+Atau otomatis: setiap push, GitHub Actions membuat artifact
+**CableTrayHub-Revit2025** di tab Actions.
 
 ## Install di komputer yang ada Revit 2025
-
-Salin ke folder addins Revit:
 
 ```
 %APPDATA%\Autodesk\Revit\Addins\2025\
@@ -40,27 +45,15 @@ Salin ke folder addins Revit:
     └── CableTrayHub.Revit.dll
 ```
 
-Contoh perintah PowerShell:
-
-```powershell
-$dst = "$env:APPDATA\Autodesk\Revit\Addins\2025"
-New-Item -ItemType Directory -Force "$dst\CableTrayHub"
-Copy-Item CableTrayHub.addin $dst
-Copy-Item CableTrayHub.Revit\bin\Release\CableTrayHub.Revit.dll "$dst\CableTrayHub"
-```
-
-Buka Revit → saat pertama kali muncul dialog keamanan add-in → pilih
-**Always Load**. Tab **Cable Tray Hub** akan muncul di ribbon.
+Buka Revit → dialog keamanan add-in → **Always Load**.
 
 ## Catatan teknis
 
-- Project Revit harus punya minimal satu **Conduit Type** (ada di template
-  Electrical bawaan). Jika tidak ada, plugin menampilkan pesan.
-- Diameter conduit di-set ke diameter luar (De) kabel. Jika ukuran itu tidak
-  terdaftar di *Electrical Settings → Conduit Sizes*, Revit memakai ukuran
-  default type — plugin melaporkan jumlahnya di ringkasan akhir.
-- Jika segmen tray yang dipilih tidak menerus (ada cabang/terputus jauh),
-  conduit tetap digambar per segmen tapi tanpa elbow — dilaporkan di
-  ringkasan.
-- Konfigurasi (URL API, ID terakhir) disimpan di
-  `%APPDATA%\CableTrayHub\config.json`.
+- Pemetaan jalur→tray disimpan di dalam file Revit (Extensible Storage,
+  elemen `CableTrayHub_SyncStorage`) — ikut tersimpan bersama model.
+- Project harus punya minimal satu **Conduit Type** (template Electrical).
+- Diameter conduit di-set ke De kabel; bila ukuran tidak ada di
+  *Electrical Settings → Conduit Sizes*, dipakai ukuran default type.
+- Jika segmen tray terputus/bercabang, conduit digambar per segmen tanpa
+  elbow (dilaporkan di ringkasan).
+- Konfigurasi URL API & ID terakhir: `%APPDATA%\CableTrayHub\config.json`.

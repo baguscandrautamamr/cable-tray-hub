@@ -1,5 +1,6 @@
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -22,6 +23,33 @@ namespace CableTrayHub.Revit
         [JsonPropertyName("jenisTray")] public string JenisTray { get; set; }
         [JsonPropertyName("status")] public string Status { get; set; }
         [JsonPropertyName("detail")] public SimulationDetail Detail { get; set; }
+
+        /// <summary>
+        /// Daftar jalur ternormalisasi: versi web baru menyimpan detail.routes,
+        /// versi lama menyimpan detail.kabel (tanpa jalur) — keduanya didukung.
+        /// </summary>
+        public List<RouteInfo> GetRoutes()
+        {
+            if (Detail == null) return new List<RouteInfo>();
+
+            if (Detail.Routes != null && Detail.Routes.Count > 0)
+                return Detail.Routes.Where(r => r.Kabel != null && r.Kabel.Count > 0).ToList();
+
+            if (Detail.Kabel != null && Detail.Kabel.Count > 0)
+            {
+                return new List<RouteInfo>
+                {
+                    new RouteInfo
+                    {
+                        Key = "JALUR-UTAMA",
+                        PanelFrom = "Panel Asal",
+                        PanelTo = "Panel Tujuan",
+                        Kabel = Detail.Kabel
+                    }
+                };
+            }
+            return new List<RouteInfo>();
+        }
     }
 
     public class SimulationDetail
@@ -29,6 +57,15 @@ namespace CableTrayHub.Revit
         [JsonPropertyName("tray")] public TrayInfo Tray { get; set; }
         [JsonPropertyName("metode")] public string Metode { get; set; }
         [JsonPropertyName("spare")] public string Spare { get; set; }
+        [JsonPropertyName("routes")] public List<RouteInfo> Routes { get; set; }
+        [JsonPropertyName("kabel")] public List<CableInfo> Kabel { get; set; } // format lama
+    }
+
+    public class RouteInfo
+    {
+        [JsonPropertyName("key")] public string Key { get; set; }
+        [JsonPropertyName("panelFrom")] public string PanelFrom { get; set; }
+        [JsonPropertyName("panelTo")] public string PanelTo { get; set; }
         [JsonPropertyName("kabel")] public List<CableInfo> Kabel { get; set; } = new();
     }
 
@@ -50,18 +87,45 @@ namespace CableTrayHub.Revit
         [JsonPropertyName("qty")] public int Qty { get; set; }
     }
 
+    // ================= PAYLOAD PUSH KE WEBSITE =================
+
+    public class PushPayload
+    {
+        [JsonPropertyName("simId")] public string SimId { get; set; }
+        [JsonPropertyName("model")] public string Model { get; set; }
+        [JsonPropertyName("user")] public string User { get; set; }
+        [JsonPropertyName("routes")] public List<PushRoute> Routes { get; set; } = new();
+    }
+
+    public class PushRoute
+    {
+        [JsonPropertyName("key")] public string Key { get; set; }
+        [JsonPropertyName("status")] public string Status { get; set; }
+        [JsonPropertyName("jumlahConduit")] public int JumlahConduit { get; set; }
+        [JsonPropertyName("totalPanjangM")] public double TotalPanjangM { get; set; }
+    }
+
+    public class PushResponse
+    {
+        [JsonPropertyName("success")] public bool Success { get; set; }
+        [JsonPropertyName("error")] public string Error { get; set; }
+        [JsonPropertyName("saved")] public int Saved { get; set; }
+    }
+
     // ================= HTTP CLIENT =================
 
     public static class ApiClient
     {
         private static readonly HttpClient Http = CreateClient();
 
+        private static readonly JsonSerializerOptions JsonOpts =
+            new() { PropertyNameCaseInsensitive = true };
+
         private static HttpClient CreateClient()
         {
             // Apps Script me-redirect ke script.googleusercontent.com — ikuti redirect.
             var handler = new HttpClientHandler { AllowAutoRedirect = true };
-            var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
-            return client;
+            return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
         }
 
         public static SimulationResponse GetSimulation(string apiUrl, string simId)
@@ -69,8 +133,17 @@ namespace CableTrayHub.Revit
             string url = apiUrl.TrimEnd('/') +
                          "?action=getSimulation&id=" + Uri.EscapeDataString(simId.Trim());
             string json = Http.GetStringAsync(url).GetAwaiter().GetResult();
-            return JsonSerializer.Deserialize<SimulationResponse>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return JsonSerializer.Deserialize<SimulationResponse>(json, JsonOpts);
+        }
+
+        public static PushResponse PushStatus(string apiUrl, PushPayload payload)
+        {
+            var body = new { action = "pushRevitStatus", data = payload };
+            var content = new StringContent(
+                JsonSerializer.Serialize(body), Encoding.UTF8, "text/plain");
+            var response = Http.PostAsync(apiUrl.TrimEnd('/'), content).GetAwaiter().GetResult();
+            string json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            return JsonSerializer.Deserialize<PushResponse>(json, JsonOpts);
         }
     }
 

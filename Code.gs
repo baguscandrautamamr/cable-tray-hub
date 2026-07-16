@@ -36,9 +36,53 @@ function doPost(e) {
     if (body.action === "saveSimulation") {
       return jsonOutput(saveSimulation(body.data));
     }
+    if (body.action === "pushRevitStatus") {
+      return jsonOutput(pushRevitStatus(body.data));
+    }
     return jsonOutput({ success: false, error: "Unknown action: " + body.action });
   } catch (error) {
     return jsonOutput({ success: false, error: error.toString() });
+  }
+}
+
+/**
+ * Menerima laporan PUSH dari plugin Revit: status tiap jalur yang sudah
+ * digambar di model (jumlah conduit, total panjang, nama model, user).
+ * Dicatat ke sheet "Revit_Sync" (dibuat otomatis bila belum ada).
+ */
+function pushRevitStatus(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Revit_Sync");
+    if (!sheet) {
+      sheet = ss.insertSheet("Revit_Sync");
+      var header = ["Tanggal", "ID_Simulasi", "Jalur", "Status",
+                    "Jumlah_Conduit", "Total_Panjang_m", "Model_Revit", "Oleh_User"];
+      sheet.appendRow(header);
+      sheet.getRange(1, 1, 1, header.length)
+        .setFontWeight("bold").setBackground("#2563EB").setFontColor("#FFFFFF");
+    }
+
+    var now = new Date();
+    var routes = data.routes || [];
+    for (var i = 0; i < routes.length; i++) {
+      var r = routes[i];
+      sheet.appendRow([
+        now,
+        data.simId || "",
+        r.key || "",
+        r.status || "TERGAMBAR",
+        r.jumlahConduit || 0,
+        r.totalPanjangM || 0,
+        data.model || "",
+        data.user || ""
+      ]);
+    }
+
+    SpreadsheetApp.flush();
+    return { success: true, saved: routes.length };
+  } catch (error) {
+    return { success: false, error: error.toString() };
   }
 }
 

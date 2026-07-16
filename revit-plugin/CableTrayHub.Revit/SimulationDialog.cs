@@ -4,8 +4,8 @@ using System.Windows.Forms;
 namespace CableTrayHub.Revit
 {
     /// <summary>
-    /// Dialog sederhana: isi URL API + ID simulasi -> ambil data dari website ->
-    /// tampilkan ringkasan bundle kabel -> OK untuk lanjut memilih cable tray.
+    /// Dialog PULL: isi URL API + ID simulasi -> ambil data dari website ->
+    /// tampilkan ringkasan per jalur -> OK untuk lanjut sinkronisasi ke model.
     /// </summary>
     public class SimulationDialog : Form
     {
@@ -14,7 +14,7 @@ namespace CableTrayHub.Revit
         private readonly Button _fetchButton;
         private readonly Button _okButton;
         private readonly Button _cancelButton;
-        private readonly ListBox _cableList;
+        private readonly ListBox _routeList;
         private readonly Label _statusLabel;
 
         public Simulation Result { get; private set; }
@@ -23,48 +23,48 @@ namespace CableTrayHub.Revit
 
         public SimulationDialog(PluginConfig config)
         {
-            Text = "Cable Tray Hub — Import Simulasi dari Website";
-            Width = 560;
-            Height = 470;
+            Text = "Cable Tray Hub — Pull Simulasi dari Website";
+            Width = 600;
+            Height = 500;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9f);
 
-            var urlLabel = new Label { Text = "URL API (Apps Script /exec):", Left = 15, Top = 15, Width = 510 };
-            _urlBox = new TextBox { Left = 15, Top = 38, Width = 510, Text = config.ApiUrl };
+            var urlLabel = new Label { Text = "URL API (Apps Script /exec):", Left = 15, Top = 15, Width = 550 };
+            _urlBox = new TextBox { Left = 15, Top = 38, Width = 550, Text = config.ApiUrl };
 
-            var idLabel = new Label { Text = "ID Simulasi (contoh: SIM-20260717-0001):", Left = 15, Top = 70, Width = 350 };
-            _idBox = new TextBox { Left = 15, Top = 93, Width = 350, Text = config.LastSimulationId };
+            var idLabel = new Label { Text = "ID Simulasi (dari tombol \"Connect ke Revit\" di website):", Left = 15, Top = 70, Width = 390 };
+            _idBox = new TextBox { Left = 15, Top = 93, Width = 390, Text = config.LastSimulationId };
 
-            _fetchButton = new Button { Text = "Ambil Data", Left = 380, Top = 91, Width = 145, Height = 28 };
+            _fetchButton = new Button { Text = "Ambil Data", Left = 420, Top = 91, Width = 145, Height = 28 };
             _fetchButton.Click += (s, e) => FetchData();
 
             _statusLabel = new Label
             {
                 Text = "Masukkan URL API dan ID simulasi, lalu klik \"Ambil Data\".",
-                Left = 15, Top = 130, Width = 510, Height = 34, ForeColor = Color.DimGray
+                Left = 15, Top = 130, Width = 550, Height = 34, ForeColor = Color.DimGray
             };
 
-            _cableList = new ListBox { Left = 15, Top = 168, Width = 510, Height = 190 };
+            _routeList = new ListBox { Left = 15, Top = 168, Width = 550, Height = 220 };
 
             _okButton = new Button
             {
-                Text = "Lanjut: Pilih Cable Tray ➜",
-                Left = 235, Top = 375, Width = 190, Height = 32,
+                Text = "Lanjut: Sinkronkan ke Model ➜",
+                Left = 255, Top = 405, Width = 210, Height = 32,
                 Enabled = false, DialogResult = DialogResult.OK
             };
             _cancelButton = new Button
             {
-                Text = "Batal", Left = 435, Top = 375, Width = 90, Height = 32,
+                Text = "Batal", Left = 475, Top = 405, Width = 90, Height = 32,
                 DialogResult = DialogResult.Cancel
             };
 
             Controls.AddRange(new Control[]
             {
                 urlLabel, _urlBox, idLabel, _idBox, _fetchButton,
-                _statusLabel, _cableList, _okButton, _cancelButton
+                _statusLabel, _routeList, _okButton, _cancelButton
             });
 
             AcceptButton = _okButton;
@@ -83,7 +83,7 @@ namespace CableTrayHub.Revit
             _fetchButton.Enabled = false;
             _statusLabel.Text = "Mengambil data dari website...";
             _statusLabel.ForeColor = Color.DimGray;
-            _cableList.Items.Clear();
+            _routeList.Items.Clear();
             Result = null;
             _okButton.Enabled = false;
             Cursor = Cursors.WaitCursor;
@@ -100,24 +100,28 @@ namespace CableTrayHub.Revit
                 }
 
                 var sim = response.Simulation;
-                if (sim.Detail == null || sim.Detail.Kabel == null || sim.Detail.Kabel.Count == 0)
+                var routes = sim.GetRoutes();
+                if (routes.Count == 0)
                 {
-                    _statusLabel.Text = "Simulasi ditemukan tapi tidak punya detail bundle kabel. " +
-                                        "Simpan ulang simulasi dari website versi terbaru.";
+                    _statusLabel.Text = "Simulasi ditemukan tapi tidak punya detail jalur/kabel. " +
+                                        "Simpan ulang dari website versi terbaru.";
                     _statusLabel.ForeColor = Color.Firebrick;
                     return;
                 }
 
                 Result = sim;
                 int totalConduit = 0;
-                foreach (var k in sim.Detail.Kabel)
+                foreach (var r in routes)
                 {
-                    _cableList.Items.Add($"{k.Nama}  |  De {k.Diameter} mm  |  {k.Qty} jalur");
-                    totalConduit += k.Qty;
+                    int n = r.Kabel.Sum(k => k.Qty);
+                    totalConduit += n;
+                    _routeList.Items.Add($"◼ JALUR: {r.Key}   ({n} conduit)");
+                    foreach (var k in r.Kabel)
+                        _routeList.Items.Add($"      {k.Nama}  |  De {k.Diameter} mm  |  {k.Qty} jalur");
                 }
 
-                _statusLabel.Text = $"✔ {sim.NamaProyek} [{sim.Status}] — {totalConduit} conduit akan digambar " +
-                                    $"(tray {sim.Detail.Tray?.Lebar}x{sim.Detail.Tray?.Tinggi} mm, {sim.Detail.Metode}).";
+                _statusLabel.Text = $"✔ {sim.NamaProyek} [{sim.Status}] — {routes.Count} jalur, " +
+                                    $"total {totalConduit} conduit akan disinkronkan.";
                 _statusLabel.ForeColor = Color.ForestGreen;
                 _okButton.Enabled = true;
             }

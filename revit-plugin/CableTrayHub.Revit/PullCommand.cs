@@ -35,8 +35,8 @@ namespace CableTrayHub.Revit
         // Radius busur tray minimal agar elbow conduit dibuat konsentris
         // mengikutinya; di bawah ini dianggap sambungan siku biasa.
         private const double MinBendRadiusFt = 50 * MmToFt;
-        // Jarak aman conduit terhadap dinding/arm tray (mm) supaya tidak clash.
-        private const double SideClearanceMm = 10;
+        // Jarak aman conduit terhadap dasar/arm tray diatur user lewat dialog
+        // Pull (tersimpan di PluginConfig; default 10 mm keduanya).
         // OD conduit terkecil yang umum tersedia; kabel kecil (mis. De 3.1 mm)
         // tetap digambar Revit sebagai conduit sebesar ini, jadi jarak ke
         // dinding tray dihitung dari OD efektif, bukan diameter kabel.
@@ -68,8 +68,13 @@ namespace CableTrayHub.Revit
                 sim = dialog.Result;
                 config.ApiUrl = dialog.ApiUrl;
                 config.LastSimulationId = dialog.SimulationId;
+                config.BottomClearanceMm = dialog.BottomClearanceMm;
+                config.SideClearanceMm = dialog.SideClearanceMm;
                 config.Save();
             }
+
+            double sideClrFt = config.SideClearanceMm * MmToFt;
+            double bottomClrFt = config.BottomClearanceMm * MmToFt;
 
             var routes = sim.GetRoutes();
             var mapping = SyncStorage.Load(doc);
@@ -250,34 +255,38 @@ namespace CableTrayHub.Revit
                         CableInfo cable = slots[slot].Cable;
                         PosXY pos = slots[slot].Pos;
 
+                        // Kabel kecil tetap digambar Revit sebagai conduit
+                        // ukuran terkecil — jarak aman dihitung dari OD efektif.
+                        double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
+                        double effRFt = (effOdMm / 2.0) * MmToFt;
+
                         // Offset penampang relatif sumbu tray. Lateral: dari
                         // tengah lebar. Vertikal: y website diukur dari DASAR
                         // PAKAI tray -> dipetakan mulai puncak plat dasar
-                        // interior (floorVFt), sehingga kabel duduk DI ATAS
-                        // plat, bukan menembus dasar tray.
+                        // interior (floorVFt) DITAMBAH jarak aman dasar yang
+                        // di-set user, sehingga seluruh susunan terangkat dan
+                        // tidak menyentuh plat.
                         double lat, vert;
                         if (pos != null)
                         {
                             lat = (pos.X - trayWmm / 2.0) * MmToFt;
-                            vert = floorVFt + pos.Y * MmToFt;
+                            vert = floorVFt + bottomClrFt + pos.Y * MmToFt;
                         }
                         else
                         {
                             lat = (slot - (slots.Count - 1) / 2.0) * spacingFt;
-                            vert = floorVFt + (cable.Diameter / 2.0) * MmToFt; // duduk di dasar pakai
+                            vert = floorVFt + bottomClrFt + effRFt; // duduk di atas jarak aman
                         }
 
                         // Jepit posisi agar seluruh badan conduit tetap di
-                        // ruang interior tray + jarak aman dari rail samping.
-                        double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
-                        double effRFt = (effOdMm / 2.0) * MmToFt;
-                        double clrFt = SideClearanceMm * MmToFt;
-                        double latLo = latMinFt + clrFt + effRFt;
-                        double latHi = latMaxFt - clrFt - effRFt;
+                        // ruang interior tray + jarak aman dari plat dasar
+                        // dan rail samping (keduanya dari dialog Pull).
+                        double latLo = latMinFt + sideClrFt + effRFt;
+                        double latHi = latMaxFt - sideClrFt - effRFt;
                         lat = latHi > latLo
                             ? Math.Clamp(lat, latLo, latHi)
                             : (latLo + latHi) / 2.0;
-                        double vLo = floorVFt + effRFt;
+                        double vLo = floorVFt + bottomClrFt + effRFt;
                         double vHi = Math.Max(vLo, halfHFt - effRFt);
                         vert = Math.Clamp(vert, vLo, vHi);
 

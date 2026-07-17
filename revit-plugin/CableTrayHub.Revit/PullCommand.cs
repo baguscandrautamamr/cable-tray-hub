@@ -150,10 +150,19 @@ namespace CableTrayHub.Revit
             // ---------- 3. Transaction: hapus conduit lama + gambar ulang ----------
             var summary = new StringBuilder();
             int totalCreated = 0, totalDeleted = 0, totalElbow = 0, totalBend = 0;
+            bool radiusWritable;
 
             using (var t = new Transaction(doc, "Pull Cable Tray Hub: " + sim.Id))
             {
                 t.Start();
+
+                // Banyak family elbow conduit menghitung Bend Radius dari
+                // lookup table (parameter terkunci formula) — deteksi sekali:
+                // bila terkunci, belokan berradius digambar sebagai rangkaian
+                // chord pendek yang mengikuti busur elbow tray.
+                ElementId probeLevelId = new FilteredElementCollector(doc)
+                    .OfClass(typeof(Level)).FirstElementId();
+                radiusWritable = ProbeBendRadiusWritable(doc, conduitType, probeLevelId);
 
                 foreach (var plan in plans)
                 {
@@ -212,6 +221,24 @@ namespace CableTrayHub.Revit
                     if (revitWmm <= 0) revitWmm = trayWmm;
                     if (revitHmm <= 0) revitHmm = trayHmm;
 
+                    // INTERIOR NYATA tray dari geometri solid: puncak plat
+                    // dasar (kabel duduk DI ATASNYA, bukan di dasar luar) dan
+                    // sisi dalam rail kiri/kanan. Tebal plat/rail (mis. 25.4mm)
+                    // tidak ter-ekspos sebagai parameter, jadi diukur langsung.
+                    double halfWFt = revitWmm / 2.0 * MmToFt;
+                    double halfHFt = revitHmm / 2.0 * MmToFt;
+                    double floorVFt = -halfHFt, latMinFt = -halfWFt, latMaxFt = halfWFt;
+                    foreach (var tray in plan.Trays)
+                    {
+                        if (MeasureInterior(tray, halfWFt, halfHFt,
+                                out double fl, out double lmin, out double lmax))
+                        {
+                            floorVFt = Math.Max(floorVFt, fl);
+                            latMinFt = Math.Max(latMinFt, lmin);
+                            latMaxFt = Math.Min(latMaxFt, lmax);
+                        }
+                    }
+
                     ElementId levelId = plan.Trays[0].ReferenceLevel?.Id
                         ?? new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstElementId();
 
@@ -232,27 +259,36 @@ namespace CableTrayHub.Revit
                         CableInfo cable = slots[slot].Cable;
                         PosXY pos = slots[slot].Pos;
 
-                        // Offset penampang relatif sumbu tray (sumbu = tengah lebar & tinggi)
+                        // Offset penampang relatif sumbu tray. Lateral: dari
+                        // tengah lebar. Vertikal: y website diukur dari DASAR
+                        // PAKAI tray -> dipetakan mulai puncak plat dasar
+                        // interior (floorVFt), sehingga kabel duduk DI ATAS
+                        // plat, bukan menembus dasar tray.
                         double lat, vert;
                         if (pos != null)
                         {
                             lat = (pos.X - trayWmm / 2.0) * MmToFt;
-                            vert = (pos.Y - trayHmm / 2.0) * MmToFt;
+                            vert = floorVFt + pos.Y * MmToFt;
                         }
                         else
                         {
                             lat = (slot - (slots.Count - 1) / 2.0) * spacingFt;
-                            vert = (cable.Diameter / 2.0 - trayHmm / 2.0) * MmToFt; // duduk di dasar tray
+                            vert = floorVFt + (cable.Diameter / 2.0) * MmToFt; // duduk di dasar pakai
                         }
 
-                        // Jepit posisi agar seluruh badan conduit tetap di dalam
-                        // tray Revit + jarak aman dari dinding/arm (clash guard).
+                        // Jepit posisi agar seluruh badan conduit tetap di
+                        // ruang interior tray + jarak aman dari rail samping.
                         double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
-                        double halfLatFt = (revitWmm / 2.0 - SideClearanceMm - effOdMm / 2.0) * MmToFt;
-                        lat = halfLatFt > 0 ? Math.Clamp(lat, -halfLatFt, halfLatFt) : 0;
-                        double vMinFt = (-revitHmm / 2.0 + effOdMm / 2.0) * MmToFt;
-                        double vMaxFt = (revitHmm / 2.0 - effOdMm / 2.0) * MmToFt;
-                        if (vMinFt < vMaxFt) vert = Math.Clamp(vert, vMinFt, vMaxFt);
+                        double effRFt = (effOdMm / 2.0) * MmToFt;
+                        double clrFt = SideClearanceMm * MmToFt;
+                        double latLo = latMinFt + clrFt + effRFt;
+                        double latHi = latMaxFt - clrFt - effRFt;
+                        lat = latHi > latLo
+                            ? Math.Clamp(lat, latLo, latHi)
+                            : (latLo + latHi) / 2.0;
+                        double vLo = floorVFt + effRFt;
+                        double vHi = Math.Max(vLo, halfHFt - effRFt);
+                        vert = Math.Clamp(vert, vLo, vHi);
 
                         string tag = TagPrefix + route.Key + "|" + cable.Nama;
 
@@ -261,7 +297,7 @@ namespace CableTrayHub.Revit
                         if (isChained)
                         {
                             List<XYZ> pts = BuildOffsetPolyline(chain, frames, bendInfos,
-                                lat, vert, effOdMm, out bendRadii);
+                                lat, vert, effOdMm, !radiusWritable, out bendRadii);
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
@@ -326,6 +362,12 @@ namespace CableTrayHub.Revit
                     "\n⚠ Tipe conduit di project ini tidak punya fitting Elbow di Routing " +
                     "Preferences, jadi elbow tidak bisa dibuat otomatis. Gunakan tipe " +
                     "\"Conduit with Fittings\" atau isi Routing Preferences-nya.");
+            else if (!radiusWritable && totalBend > 0)
+                summary.AppendLine(
+                    "\nℹ Family elbow conduit mengunci Bend Radius (formula/lookup " +
+                    "table), jadi belokan digambar sebagai rangkaian segmen pendek " +
+                    "yang mengikuti busur elbow tray. Untuk elbow tunggal mulus, " +
+                    "hapus formula parameter Bend Radius di family-nya.");
 
             var td = new TaskDialog("Cable Tray Hub — Pull Selesai")
             {
@@ -455,20 +497,8 @@ namespace CableTrayHub.Revit
         {
             try
             {
-                // Pasangan connector bebas yang saling terdekat antara kedua conduit
-                Connector bestA = null, bestB = null;
-                double bestDist = double.MaxValue;
-                foreach (Connector ca in a.ConnectorManager.Connectors)
-                {
-                    if (ca.IsConnected) continue;
-                    foreach (Connector cb in b.ConnectorManager.Connectors)
-                    {
-                        if (cb.IsConnected) continue;
-                        double d = ca.Origin.DistanceTo(cb.Origin);
-                        if (d < bestDist) { bestDist = d; bestA = ca; bestB = cb; }
-                    }
-                }
-                if (bestA == null || bestB == null) return false;
+                if (!FindClosestFreeConnectors(a, b, out Connector bestA, out Connector bestB))
+                    return false;
 
                 FamilyInstance elbow = doc.Create.NewElbowFitting(bestA, bestB);
                 try
@@ -484,6 +514,67 @@ namespace CableTrayHub.Revit
             catch
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Pasangan connector bebas yang saling terdekat antara dua conduit.
+        /// </summary>
+        private static bool FindClosestFreeConnectors(Conduit a, Conduit b,
+            out Connector bestA, out Connector bestB)
+        {
+            bestA = null; bestB = null;
+            double bestDist = double.MaxValue;
+            foreach (Connector ca in a.ConnectorManager.Connectors)
+            {
+                if (ca.IsConnected) continue;
+                foreach (Connector cb in b.ConnectorManager.Connectors)
+                {
+                    if (cb.IsConnected) continue;
+                    double d = ca.Origin.DistanceTo(cb.Origin);
+                    if (d < bestDist) { bestDist = d; bestA = ca; bestB = cb; }
+                }
+            }
+            return bestA != null && bestB != null;
+        }
+
+        /// <summary>
+        /// Cek sekali per Pull: apakah family elbow conduit mengizinkan
+        /// Bend Radius di-set per instance. Banyak family (mis. ACT_Elbow_RMC)
+        /// menghitungnya lewat size_lookup(...) — parameter terkunci formula
+        /// sehingga p.Set diabaikan/ditolak dan semua elbow jatuh ke radius
+        /// default. Diuji dengan elbow percobaan di SubTransaction yang
+        /// langsung di-rollback (tidak meninggalkan jejak di model).
+        /// </summary>
+        private static bool ProbeBendRadiusWritable(Document doc, ConduitType ct,
+            ElementId levelId)
+        {
+            using (var st = new SubTransaction(doc))
+            {
+                st.Start();
+                try
+                {
+                    XYZ o = XYZ.Zero;
+                    Conduit a = Conduit.Create(doc, ct.Id, o, o + XYZ.BasisX * 10, levelId);
+                    Conduit b = Conduit.Create(doc, ct.Id, o + XYZ.BasisX * 10,
+                        o + XYZ.BasisX * 10 + XYZ.BasisY * 10, levelId);
+                    if (a == null || b == null) return false;
+                    if (!FindClosestFreeConnectors(a, b, out Connector ca, out Connector cb))
+                        return false;
+
+                    FamilyInstance elbow = doc.Create.NewElbowFitting(ca, cb);
+                    Parameter p = elbow.LookupParameter("Bend Radius")
+                                  ?? elbow.LookupParameter("Bending Radius");
+                    if (p == null || p.IsReadOnly || p.StorageType != StorageType.Double)
+                        return false;
+
+                    double want = 500 * MmToFt;
+                    if (!p.Set(want)) return false;
+                    doc.Regenerate();
+                    return Math.Abs(p.AsDouble() - want) < 5 * MmToFt;
+                }
+                catch { return false; }
+                finally { st.RollBack(); }
             }
         }
 
@@ -777,6 +868,107 @@ namespace CableTrayHub.Revit
         }
 
         /// <summary>
+        /// Semua solid geometri sebuah elemen (termasuk di dalam instance).
+        /// </summary>
+        private static List<Solid> CollectSolids(Element e)
+        {
+            var solids = new List<Solid>();
+            try
+            {
+                var ge = e.get_Geometry(new Options { DetailLevel = ViewDetailLevel.Fine });
+                if (ge == null) return solids;
+                foreach (GeometryObject go in ge)
+                {
+                    if (go is Solid s && s.Volume > 1e-9) solids.Add(s);
+                    else if (go is GeometryInstance gi)
+                    {
+                        foreach (GeometryObject g2 in gi.GetInstanceGeometry())
+                            if (g2 is Solid s2 && s2.Volume > 1e-9) solids.Add(s2);
+                    }
+                }
+            }
+            catch { }
+            return solids;
+        }
+
+        /// <summary>
+        /// Mengukur ruang interior tray dari geometri solidnya, karena tebal
+        /// plat dasar / rail samping (mis. 25.4 mm) TIDAK ter-ekspos sebagai
+        /// parameter. Probe garis dipotongkan dengan solid di 3 stasiun
+        /// sepanjang sumbu:
+        ///  - probe vertikal  -> puncak struktur dasar (plat/anak tangga) =
+        ///    floorV (kabel harus duduk DI ATASNYA);
+        ///  - probe horizontal (di ketinggian sumbu) -> sisi DALAM rail kiri
+        ///    dan kanan (latMin/latMax).
+        /// Semua nilai relatif sumbu tray (ft). false bila geometri tak
+        /// terbaca (pemanggil memakai dimensi luar sebagai fallback).
+        /// </summary>
+        private static bool MeasureInterior(CableTray tray, double halfWFt, double halfHFt,
+            out double floorV, out double latMin, out double latMax)
+        {
+            floorV = -halfHFt; latMin = -halfWFt; latMax = halfWFt;
+
+            if (tray.Location is not LocationCurve lc || lc.Curve is not Line line)
+                return false;
+            var solids = CollectSolids(tray);
+            if (solids.Count == 0) return false;
+
+            XYZ d = line.Direction;
+            XYZ n = PerpendicularOf(d);
+            XYZ v = d.CrossProduct(n);
+            if (v.GetLength() < 1e-6) v = XYZ.BasisZ;
+            v = v.Normalize();
+            if (v.Z < 0) v = v.Negate();
+
+            bool found = false;
+            var opts = new SolidCurveIntersectionOptions();
+
+            foreach (double t in new[] { 0.3, 0.5, 0.7 })
+            {
+                XYZ p = line.Evaluate(t, true);
+                Line probeV = Line.CreateBound(p - v * halfHFt * 2, p + v * halfHFt * 2);
+                Line probeH = Line.CreateBound(p - n * halfWFt * 2, p + n * halfWFt * 2);
+
+                foreach (Solid sol in solids)
+                {
+                    SolidCurveIntersection ix = null;
+                    try { ix = sol.IntersectWithCurve(probeV, opts); } catch { }
+                    if (ix != null)
+                    {
+                        for (int k = 0; k < ix.SegmentCount; k++)
+                        {
+                            Curve seg = ix.GetCurveSegment(k);
+                            double a0 = (seg.GetEndPoint(0) - p).DotProduct(v);
+                            double a1 = (seg.GetEndPoint(1) - p).DotProduct(v);
+                            // hanya struktur di paruh bawah (plat dasar / rung)
+                            if ((a0 + a1) / 2.0 < 0)
+                            {
+                                floorV = Math.Max(floorV, Math.Max(a0, a1));
+                                found = true;
+                            }
+                        }
+                    }
+
+                    try { ix = sol.IntersectWithCurve(probeH, opts); } catch { }
+                    if (ix != null)
+                    {
+                        for (int k = 0; k < ix.SegmentCount; k++)
+                        {
+                            Curve seg = ix.GetCurveSegment(k);
+                            double b0 = (seg.GetEndPoint(0) - p).DotProduct(n);
+                            double b1 = (seg.GetEndPoint(1) - p).DotProduct(n);
+                            double mid = (b0 + b1) / 2.0;
+                            if (mid < 0) { latMin = Math.Max(latMin, Math.Max(b0, b1)); found = true; }
+                            else { latMax = Math.Min(latMax, Math.Min(b0, b1)); found = true; }
+                        }
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
         /// Baca parameter panjang elemen dalam mm; 0 bila tidak ada.
         /// </summary>
         private static double ParamMm(Element e, BuiltInParameter bip)
@@ -797,15 +989,20 @@ namespace CableTrayHub.Revit
         /// tetap rapi di tikungan; belokan segaris dilewati (jadi satu conduit).
         /// bendRadii[j] = radius elbow untuk belokan ke-j (konsentris dengan
         /// busur elbow tray; 0 bila tray menyiku langsung tanpa busur).
+        /// Mode tessellate (family elbow mengunci Bend Radius): belokan
+        /// berradius diganti rangkaian chord pendek (per ≤15°) yang mengikuti
+        /// busur — bendRadii mengembalikan null, elbow antar chord memakai
+        /// radius default family.
         /// </summary>
         private static List<XYZ> BuildOffsetPolyline(
             List<Line> chain, List<(XYZ N, XYZ V)> frames, List<BendInfo> bendInfos,
-            double lat, double vert, double effOdMm, out List<double> bendRadii)
+            double lat, double vert, double effOdMm, bool tessellate,
+            out List<double> bendRadii)
         {
             XYZ Off(int i) => frames[i].N * lat + frames[i].V * vert;
 
             var points = new List<XYZ> { chain[0].GetEndPoint(0) + Off(0) };
-            bendRadii = new List<double>();
+            bendRadii = tessellate ? null : new List<double>();
 
             for (int i = 0; i < chain.Count - 1; i++)
             {
@@ -823,7 +1020,6 @@ namespace CableTrayHub.Revit
 
                 XYZ corner = IntersectLines(a1, a2 - a1, b1, b2 - b1)
                              ?? (a2 + b1) / 2.0; // hampir paralel -> titik tengah
-                points.Add(corner);
 
                 // Radius konsentris kabel ini: radius sumbu tray dikurangi
                 // komponen offset ke arah pusat busur (kabel sisi dalam
@@ -842,13 +1038,59 @@ namespace CableTrayHub.Revit
                         double rMax = bi.FitR + bi.SpanFt - (effOdMm / 2.0) * MmToFt;
                         if (rMax > rMin) r = Math.Clamp(r, rMin, rMax);
                     }
+                    if (r < MinBendRadiusFt) r = 0;
                 }
-                bendRadii.Add(r > MinBendRadiusFt ? r : 0);
+
+                if (tessellate && r > 0 &&
+                    AppendArcChords(points, chain[i].Direction, chain[i + 1].Direction,
+                        corner, r))
+                {
+                    continue; // corner tunggal sudah diganti rangkaian chord
+                }
+
+                points.Add(corner);
+                bendRadii?.Add(r);
             }
 
             points.Add(chain[^1].GetEndPoint(1) + Off(chain.Count - 1));
 
             return points;
+        }
+
+        /// <summary>
+        /// Menambahkan titik-titik chord yang mendekati busur berradius r
+        /// menyinggung kedua kaki belokan (pengganti elbow berradius saat
+        /// family conduit mengunci Bend Radius). Chord dibuat per ≤15° dan
+        /// diperbesar otomatis bila terlalu pendek untuk jadi conduit.
+        /// </summary>
+        private static bool AppendArcChords(List<XYZ> points, XYZ dPrev, XYZ dNext,
+            XYZ corner, double r)
+        {
+            double theta = dPrev.AngleTo(dNext);
+            XYZ axis = dPrev.CrossProduct(dNext);
+            if (axis.GetLength() < 1e-9) return false;
+            axis = axis.Normalize();
+
+            double tangent = r * Math.Tan(theta / 2.0);
+            XYZ p1 = corner - dPrev * tangent;   // titik singgung kaki masuk
+            XYZ p2 = corner + dNext * tangent;   // titik singgung kaki keluar
+            XYZ center = p1 + axis.CrossProduct(dPrev).Normalize() * r;
+
+            int nSeg = (int)Math.Ceiling(theta / (Math.PI / 12.0)); // per ≤15°
+            // Chord harus cukup panjang untuk jadi conduit + dipangkas fitting
+            while (nSeg > 1 && 2.0 * r * Math.Sin(theta / (2.0 * nSeg)) < 2.0 * MinSegmentFt)
+                nSeg--;
+            if (nSeg <= 1) return false; // busur terlalu kecil -> siku biasa
+
+            points.Add(p1);
+            XYZ spoke = p1 - center;
+            for (int k = 1; k < nSeg; k++)
+            {
+                Transform rot = Transform.CreateRotation(axis, theta * k / nSeg);
+                points.Add(center + rot.OfVector(spoke));
+            }
+            points.Add(p2);
+            return true;
         }
 
         /// <summary>

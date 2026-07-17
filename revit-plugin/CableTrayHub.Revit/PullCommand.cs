@@ -150,19 +150,10 @@ namespace CableTrayHub.Revit
             // ---------- 3. Transaction: hapus conduit lama + gambar ulang ----------
             var summary = new StringBuilder();
             int totalCreated = 0, totalDeleted = 0, totalElbow = 0, totalBend = 0;
-            bool radiusWritable;
 
             using (var t = new Transaction(doc, "Pull Cable Tray Hub: " + sim.Id))
             {
                 t.Start();
-
-                // Banyak family elbow conduit menghitung Bend Radius dari
-                // lookup table (parameter terkunci formula) — deteksi sekali:
-                // bila terkunci, belokan berradius digambar sebagai rangkaian
-                // chord pendek yang mengikuti busur elbow tray.
-                ElementId probeLevelId = new FilteredElementCollector(doc)
-                    .OfClass(typeof(Level)).FirstElementId();
-                radiusWritable = ProbeBendRadiusWritable(doc, conduitType, probeLevelId);
 
                 foreach (var plan in plans)
                 {
@@ -297,7 +288,7 @@ namespace CableTrayHub.Revit
                         if (isChained)
                         {
                             List<XYZ> pts = BuildOffsetPolyline(chain, frames, bendInfos,
-                                lat, vert, effOdMm, !radiusWritable, out bendRadii);
+                                lat, vert, effOdMm, out bendRadii);
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
@@ -362,12 +353,6 @@ namespace CableTrayHub.Revit
                     "\n⚠ Tipe conduit di project ini tidak punya fitting Elbow di Routing " +
                     "Preferences, jadi elbow tidak bisa dibuat otomatis. Gunakan tipe " +
                     "\"Conduit with Fittings\" atau isi Routing Preferences-nya.");
-            else if (!radiusWritable && totalBend > 0)
-                summary.AppendLine(
-                    "\nℹ Family elbow conduit mengunci Bend Radius (formula/lookup " +
-                    "table), jadi belokan digambar sebagai rangkaian segmen pendek " +
-                    "yang mengikuti busur elbow tray. Untuk elbow tunggal mulus, " +
-                    "hapus formula parameter Bend Radius di family-nya.");
 
             var td = new TaskDialog("Cable Tray Hub — Pull Selesai")
             {
@@ -536,46 +521,6 @@ namespace CableTrayHub.Revit
                 }
             }
             return bestA != null && bestB != null;
-        }
-
-        /// <summary>
-        /// Cek sekali per Pull: apakah family elbow conduit mengizinkan
-        /// Bend Radius di-set per instance. Banyak family (mis. ACT_Elbow_RMC)
-        /// menghitungnya lewat size_lookup(...) — parameter terkunci formula
-        /// sehingga p.Set diabaikan/ditolak dan semua elbow jatuh ke radius
-        /// default. Diuji dengan elbow percobaan di SubTransaction yang
-        /// langsung di-rollback (tidak meninggalkan jejak di model).
-        /// </summary>
-        private static bool ProbeBendRadiusWritable(Document doc, ConduitType ct,
-            ElementId levelId)
-        {
-            using (var st = new SubTransaction(doc))
-            {
-                st.Start();
-                try
-                {
-                    XYZ o = XYZ.Zero;
-                    Conduit a = Conduit.Create(doc, ct.Id, o, o + XYZ.BasisX * 10, levelId);
-                    Conduit b = Conduit.Create(doc, ct.Id, o + XYZ.BasisX * 10,
-                        o + XYZ.BasisX * 10 + XYZ.BasisY * 10, levelId);
-                    if (a == null || b == null) return false;
-                    if (!FindClosestFreeConnectors(a, b, out Connector ca, out Connector cb))
-                        return false;
-
-                    FamilyInstance elbow = doc.Create.NewElbowFitting(ca, cb);
-                    Parameter p = elbow.LookupParameter("Bend Radius")
-                                  ?? elbow.LookupParameter("Bending Radius");
-                    if (p == null || p.IsReadOnly || p.StorageType != StorageType.Double)
-                        return false;
-
-                    double want = 500 * MmToFt;
-                    if (!p.Set(want)) return false;
-                    doc.Regenerate();
-                    return Math.Abs(p.AsDouble() - want) < 5 * MmToFt;
-                }
-                catch { return false; }
-                finally { st.RollBack(); }
-            }
         }
 
         /// <summary>
@@ -910,6 +855,10 @@ namespace CableTrayHub.Revit
 
             if (tray.Location is not LocationCurve lc || lc.Curve is not Line line)
                 return false;
+            // Segmen vertikal/riser dilewati: arah "atas penampang"-nya ambigu
+            // sehingga dinding bisa terbaca sebagai lantai dan MENGANGKAT semua
+            // kabel (gejala: conduit melayang jauh di atas plat dasar).
+            if (Math.Abs(line.Direction.Z) > 0.7) return false;
             var solids = CollectSolids(tray);
             if (solids.Count == 0) return false;
 
@@ -940,8 +889,10 @@ namespace CableTrayHub.Revit
                             Curve seg = ix.GetCurveSegment(k);
                             double a0 = (seg.GetEndPoint(0) - p).DotProduct(v);
                             double a1 = (seg.GetEndPoint(1) - p).DotProduct(v);
-                            // hanya struktur di paruh bawah (plat dasar / rung)
-                            if ((a0 + a1) / 2.0 < 0)
+                            // Lantai = struktur yang SELURUHNYA di bawah sumbu
+                            // (plat dasar / rung). Dinding yang melintasi sumbu
+                            // bukan lantai — abaikan.
+                            if (a0 < 0 && a1 < 0)
                             {
                                 floorV = Math.Max(floorV, Math.Max(a0, a1));
                                 found = true;
@@ -957,9 +908,10 @@ namespace CableTrayHub.Revit
                             Curve seg = ix.GetCurveSegment(k);
                             double b0 = (seg.GetEndPoint(0) - p).DotProduct(n);
                             double b1 = (seg.GetEndPoint(1) - p).DotProduct(n);
-                            double mid = (b0 + b1) / 2.0;
-                            if (mid < 0) { latMin = Math.Max(latMin, Math.Max(b0, b1)); found = true; }
-                            else { latMax = Math.Min(latMax, Math.Min(b0, b1)); found = true; }
+                            // Rail samping = struktur yang seluruhnya di satu
+                            // sisi sumbu; yang melintasi sumbu diabaikan.
+                            if (b0 < 0 && b1 < 0) { latMin = Math.Max(latMin, Math.Max(b0, b1)); found = true; }
+                            else if (b0 > 0 && b1 > 0) { latMax = Math.Min(latMax, Math.Min(b0, b1)); found = true; }
                         }
                     }
                 }
@@ -989,20 +941,15 @@ namespace CableTrayHub.Revit
         /// tetap rapi di tikungan; belokan segaris dilewati (jadi satu conduit).
         /// bendRadii[j] = radius elbow untuk belokan ke-j (konsentris dengan
         /// busur elbow tray; 0 bila tray menyiku langsung tanpa busur).
-        /// Mode tessellate (family elbow mengunci Bend Radius): belokan
-        /// berradius diganti rangkaian chord pendek (per ≤15°) yang mengikuti
-        /// busur — bendRadii mengembalikan null, elbow antar chord memakai
-        /// radius default family.
         /// </summary>
         private static List<XYZ> BuildOffsetPolyline(
             List<Line> chain, List<(XYZ N, XYZ V)> frames, List<BendInfo> bendInfos,
-            double lat, double vert, double effOdMm, bool tessellate,
-            out List<double> bendRadii)
+            double lat, double vert, double effOdMm, out List<double> bendRadii)
         {
             XYZ Off(int i) => frames[i].N * lat + frames[i].V * vert;
 
             var points = new List<XYZ> { chain[0].GetEndPoint(0) + Off(0) };
-            bendRadii = tessellate ? null : new List<double>();
+            bendRadii = new List<double>();
 
             for (int i = 0; i < chain.Count - 1; i++)
             {
@@ -1041,56 +988,13 @@ namespace CableTrayHub.Revit
                     if (r < MinBendRadiusFt) r = 0;
                 }
 
-                if (tessellate && r > 0 &&
-                    AppendArcChords(points, chain[i].Direction, chain[i + 1].Direction,
-                        corner, r))
-                {
-                    continue; // corner tunggal sudah diganti rangkaian chord
-                }
-
                 points.Add(corner);
-                bendRadii?.Add(r);
+                bendRadii.Add(r);
             }
 
             points.Add(chain[^1].GetEndPoint(1) + Off(chain.Count - 1));
 
             return points;
-        }
-
-        /// <summary>
-        /// Menambahkan titik-titik chord yang mendekati busur berradius r
-        /// menyinggung kedua kaki belokan (pengganti elbow berradius saat
-        /// family conduit mengunci Bend Radius). Chord dibuat per ≤15° dan
-        /// diperbesar otomatis bila terlalu pendek untuk jadi conduit.
-        /// </summary>
-        private static bool AppendArcChords(List<XYZ> points, XYZ dPrev, XYZ dNext,
-            XYZ corner, double r)
-        {
-            double theta = dPrev.AngleTo(dNext);
-            XYZ axis = dPrev.CrossProduct(dNext);
-            if (axis.GetLength() < 1e-9) return false;
-            axis = axis.Normalize();
-
-            double tangent = r * Math.Tan(theta / 2.0);
-            XYZ p1 = corner - dPrev * tangent;   // titik singgung kaki masuk
-            XYZ p2 = corner + dNext * tangent;   // titik singgung kaki keluar
-            XYZ center = p1 + axis.CrossProduct(dPrev).Normalize() * r;
-
-            int nSeg = (int)Math.Ceiling(theta / (Math.PI / 12.0)); // per ≤15°
-            // Chord harus cukup panjang untuk jadi conduit + dipangkas fitting
-            while (nSeg > 1 && 2.0 * r * Math.Sin(theta / (2.0 * nSeg)) < 2.0 * MinSegmentFt)
-                nSeg--;
-            if (nSeg <= 1) return false; // busur terlalu kecil -> siku biasa
-
-            points.Add(p1);
-            XYZ spoke = p1 - center;
-            for (int k = 1; k < nSeg; k++)
-            {
-                Transform rot = Transform.CreateRotation(axis, theta * k / nSeg);
-                points.Add(center + rot.OfVector(spoke));
-            }
-            points.Add(p2);
-            return true;
         }
 
         /// <summary>

@@ -99,6 +99,18 @@ tetap bisa dihapus dari daftar). ⚠ WAJIB: salin Code.gs terbaru ke editor
 Apps Script lalu Deploy → Manage deployments → Edit → **New version** —
 sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 
+**Ronde 5 (17 Jul): rollback mode chord + fix kabel melayang**
+1. Mode chord (ronde 3) DICABUT atas permintaan — di lapangan menghasilkan
+   ribuan segmen kecil + error "insufficient space to create fittings"
+   (1470 conduit utk 1 jalur). Belokan kembali seperti ronde 2: satu elbow
+   per belokan, Bend Radius konsentris di-set bila family mengizinkan
+   (family ber-lookup table = pakai radius default family, terima saja).
+2. Kabel melayang ±70 mm di atas plat: pengukur interior teracuni segmen
+   riser (dinding terbaca sebagai "lantai" → semua kabel terangkat ke klem
+   atas). Fix: segmen dengan |arah.Z| > 0.7 dilewati, dan hanya struktur yang
+   SELURUHNYA di bawah sumbu dihitung lantai (yang melintasi sumbu diabaikan);
+   rail samping juga hanya yang seluruhnya di satu sisi.
+
 **Belum diuji (kerjaan berikutnya):**
 1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:
    cek conduit tidak menabrak arm tray, Bend Radius conduit mengikuti Bend

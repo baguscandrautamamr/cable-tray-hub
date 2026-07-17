@@ -34,8 +34,8 @@ auto-deploy setiap push ke `main`).
 | File/Folder | Isi |
 |---|---|
 | `index.html` | Seluruh aplikasi web (multi-jalur per simulasi: `dbRoutes` panelFrom/panelTo/cables; kanvas penampang drag & drop menyimpan posisi mm tiap kabel) |
-| `sw.js` | Service worker (cache `cable-tray-hub-v5`; index network-first; API Google TIDAK diintersep) |
-| `Code.gs` | REST API Apps Script: `?action=getInitialData`, `?action=getSimulation&id=`, POST `saveSimulation`, sheet `Revit_Sync` untuk Push |
+| `sw.js` | Service worker (cache `cable-tray-hub-v6`; index network-first; API Google TIDAK diintersep) |
+| `Code.gs` | REST API Apps Script: `?action=getInitialData`, `?action=getSimulation&id=`, POST `saveSimulation` & `deleteSimulation`, sheet `Revit_Sync` untuk Push |
 | `Setup.gs` | `initSetup()` — mengisi katalog 185 kabel (identik dengan website) ke sheet `Katalog_Kabel`, `Tray_Templates`, `Simulasi_History` |
 | `revit-plugin/` | Plugin Revit 2025: `PullCommand.cs` (gambar conduit), `PushCommand.cs` (kirim data conduit ke sheet), `SyncStorage.cs` (Extensible Storage: mapping jalur→tray), `SimulationDialog.cs`, `ApiClient.cs` |
 | `.github/workflows/build-revit-plugin.yml` | CI: build .NET 8 → artifact + **Release tag `latest`** otomatis tiap push yang menyentuh `revit-plugin/` |
@@ -92,6 +92,12 @@ auto-deploy setiap push ke `main`).
    berradius digambar sebagai **rangkaian chord per ≤15° mengikuti busur
    konsentris elbow tray** — tiap kabel tetap dapat radius sendiri dan tetap
    di dalam annulus elbow. Kalau radius bisa di-set, tetap elbow tunggal.
+
+**Ronde 4 (17 Jul): tombol Hapus riwayat kini menghapus PERMANEN di database**
+(`deleteSimulation` di Code.gs + konfirmasi ganda di web; entri lokal-saja
+tetap bisa dihapus dari daftar). ⚠ WAJIB: salin Code.gs terbaru ke editor
+Apps Script lalu Deploy → Manage deployments → Edit → **New version** —
+sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 
 **Belum diuji (kerjaan berikutnya):**
 1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:

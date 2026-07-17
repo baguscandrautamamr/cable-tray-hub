@@ -2041,10 +2041,45 @@ function showToast(message, type = "success") {
     function fetchNextHistoryPage() { /* semua riwayat sudah ditampilkan */ }
 
     function deleteHistory(id) {
-      if (!confirm('Hapus riwayat ' + id + '?')) return;
-      dbHistory = dbHistory.filter(h => h.id !== id);
-      renderHistoryList(true);
-      showToast('Riwayat berhasil dihapus.', 'success');
+      if (!confirm('Hapus riwayat ' + id + ' secara PERMANEN?\n\n' +
+        'Data di database online (Google Sheets) ikut terhapus dan tidak bisa dikembalikan.')) return;
+
+      function removeLocally(msg, type) {
+        dbHistory = dbHistory.filter(h => h.id !== id);
+        renderHistoryList(true);
+        updateUIMasterCounts();
+        showToast(msg, type);
+      }
+
+      function onDeleteResponse(res) {
+        if (res && res.success) {
+          removeLocally('Riwayat ' + id + ' dihapus dari database.', 'success');
+        } else if (res && res.error && res.error.indexOf('tidak ditemukan') !== -1) {
+          // Entri hanya tersimpan lokal (belum pernah masuk database)
+          removeLocally('Riwayat tidak ada di database — dihapus dari daftar lokal.', 'warning');
+        } else {
+          showToast('Gagal menghapus di database: ' + (res && res.error ? res.error : 'tanpa respons'), 'error');
+        }
+      }
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(onDeleteResponse)
+          .withFailureHandler(function(err) {
+            showToast('Gagal menghapus di database: ' + err, 'error');
+          })
+          .deleteSimulation({ id: id });
+      } else if (API_URL) {
+        showToast('Menghapus riwayat di database...', 'warning');
+        apiPost('deleteSimulation', { id: id })
+          .then(onDeleteResponse)
+          .catch(function(err) {
+            console.warn('Gagal menghapus riwayat online.', err);
+            showToast('Database tidak terjangkau — riwayat TIDAK dihapus.', 'error');
+          });
+      } else {
+        removeLocally('Riwayat dihapus (mode lokal, tanpa database).', 'success');
+      }
     }
 
     function editHistory(id) {

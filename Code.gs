@@ -12,6 +12,7 @@
  *    - GET  ?action=getInitialData            -> semua kabel/tray/riwayat
  *    - GET  ?action=getSimulation&id=SIM-xxx  -> detail 1 simulasi (untuk Revit)
  *    - POST body: {action:"saveSimulation", data:{...}} -> simpan riwayat
+ *    - POST body: {action:"deleteSimulation", data:{id:"SIM-xxx"}} -> hapus riwayat
  * ====================================================================
  */
 
@@ -38,6 +39,9 @@ function doPost(e) {
     }
     if (body.action === "pushRevitStatus") {
       return jsonOutput(pushRevitStatus(body.data));
+    }
+    if (body.action === "deleteSimulation") {
+      return jsonOutput(deleteSimulation(body.data));
     }
     return jsonOutput({ success: false, error: "Unknown action: " + body.action });
   } catch (error) {
@@ -244,6 +248,38 @@ function getSimulationById(simId) {
       }
     }
     return { success: false, error: "Simulasi dengan ID " + simId + " tidak ditemukan." };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Menghapus PERMANEN satu riwayat simulasi dari sheet Simulasi_History.
+ * POST body: {action:"deleteSimulation", data:{id:"SIM-xxx"}}
+ */
+function deleteSimulation(data) {
+  try {
+    var simId = data && data.id ? data.id.toString().trim() : "";
+    if (!simId) return { success: false, error: "Parameter 'id' wajib diisi." };
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Simulasi_History");
+    if (!sheet) return { success: false, error: "Sheet Simulasi_History tidak ditemukan." };
+
+    var values = sheet.getDataRange().getValues();
+    // Cari dari bawah agar aman bila ada ID ganda (hapus semuanya)
+    var deleted = 0;
+    for (var i = values.length - 1; i >= 1; i--) {
+      if (values[i][0] && values[i][0].toString() === simId) {
+        sheet.deleteRow(i + 1); // baris sheet 1-based, +1 karena header
+        deleted++;
+      }
+    }
+    SpreadsheetApp.flush();
+    if (deleted === 0) {
+      return { success: false, error: "Simulasi dengan ID " + simId + " tidak ditemukan." };
+    }
+    return { success: true, id: simId, deleted: deleted };
   } catch (error) {
     return { success: false, error: error.toString() };
   }

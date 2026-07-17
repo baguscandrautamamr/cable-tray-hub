@@ -35,6 +35,14 @@ namespace CableTrayHub.Revit
         // Radius busur tray minimal agar elbow conduit dibuat konsentris
         // mengikutinya; di bawah ini dianggap sambungan siku biasa.
         private const double MinBendRadiusFt = 50 * MmToFt;
+        // Jarak aman conduit terhadap dinding/arm tray (mm) supaya tidak clash.
+        private const double SideClearanceMm = 10;
+        // OD conduit terkecil yang umum tersedia; kabel kecil (mis. De 3.1 mm)
+        // tetap digambar Revit sebagai conduit sebesar ini, jadi jarak ke
+        // dinding tray dihitung dari OD efektif, bukan diameter kabel.
+        private const double MinConduitOdMm = 21;
+        // Radius pencarian fitting tray terdekat dari titik belok sumbu.
+        private const double FittingSearchFt = 3000 * MmToFt;
 
         private class RoutePlan
         {
@@ -190,6 +198,20 @@ namespace CableTrayHub.Revit
                     double maxDeMm = slots.Max(s => s.Cable.Diameter);
                     double spacingFt = (maxDeMm + 2) * MmToFt;
 
+                    // Dimensi tray NYATA dari elemen Revit yang dipilih (bisa
+                    // berbeda dari input website) — dipakai untuk menjepit
+                    // posisi conduit agar tidak menabrak dinding/arm tray.
+                    double revitWmm = 0, revitHmm = 0;
+                    foreach (var tray in plan.Trays)
+                    {
+                        double w = ParamMm(tray, BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM);
+                        double h = ParamMm(tray, BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM);
+                        if (w > 0) revitWmm = revitWmm == 0 ? w : Math.Min(revitWmm, w);
+                        if (h > 0) revitHmm = revitHmm == 0 ? h : Math.Min(revitHmm, h);
+                    }
+                    if (revitWmm <= 0) revitWmm = trayWmm;
+                    if (revitHmm <= 0) revitHmm = trayHmm;
+
                     ElementId levelId = plan.Trays[0].ReferenceLevel?.Id
                         ?? new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstElementId();
 
@@ -198,6 +220,11 @@ namespace CableTrayHub.Revit
                     // belokan), sehingga susunan kabel kontinu — termasuk saat
                     // jalur turun vertikal ke panel.
                     List<(XYZ N, XYZ V)> frames = isChained ? BuildFrames(chain) : null;
+                    // Info tiap belokan (radius busur elbow tray dari FITTING
+                    // yang dipilih user) — dihitung sekali per jalur.
+                    List<BendInfo> bendInfos = isChained
+                        ? ComputeBends(chain, plan.Fittings, revitWmm, revitHmm)
+                        : null;
 
                     int created = 0, elbows = 0, bends = 0;
                     for (int slot = 0; slot < slots.Count; slot++)
@@ -218,14 +245,23 @@ namespace CableTrayHub.Revit
                             vert = (cable.Diameter / 2.0 - trayHmm / 2.0) * MmToFt; // duduk di dasar tray
                         }
 
+                        // Jepit posisi agar seluruh badan conduit tetap di dalam
+                        // tray Revit + jarak aman dari dinding/arm (clash guard).
+                        double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
+                        double halfLatFt = (revitWmm / 2.0 - SideClearanceMm - effOdMm / 2.0) * MmToFt;
+                        lat = halfLatFt > 0 ? Math.Clamp(lat, -halfLatFt, halfLatFt) : 0;
+                        double vMinFt = (-revitHmm / 2.0 + effOdMm / 2.0) * MmToFt;
+                        double vMaxFt = (revitHmm / 2.0 - effOdMm / 2.0) * MmToFt;
+                        if (vMinFt < vMaxFt) vert = Math.Clamp(vert, vMinFt, vMaxFt);
+
                         string tag = TagPrefix + route.Key + "|" + cable.Nama;
 
                         var runConduits = new List<Conduit>();
                         List<double> bendRadii = null;
                         if (isChained)
                         {
-                            List<XYZ> pts = BuildOffsetPolyline(chain, frames, lat, vert,
-                                out bendRadii);
+                            List<XYZ> pts = BuildOffsetPolyline(chain, frames, bendInfos,
+                                lat, vert, effOdMm, out bendRadii);
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
@@ -599,32 +635,159 @@ namespace CableTrayHub.Revit
         /// </summary>
         private static List<(XYZ N, XYZ V)> BuildFrames(List<Line> chain)
         {
-            var frames = new List<(XYZ N, XYZ V)>();
+            // Frame acuan diambil dari segmen HORIZONTAL pertama, bukan segmen
+            // pertama rantai: pada segmen vertikal arah "atas penampang"
+            // ambigu, dan bila dipakai sebagai acuan hasil parallel transport
+            // bisa terbalik atas-bawah di segmen horizontal (gejala: kabel
+            // puncak trefoil muncul DI BAWAH, bukan di atas).
+            int anchor = 0;
+            for (int i = 0; i < chain.Count; i++)
+            {
+                if (Math.Abs(chain[i].Direction.Z) < 0.7) { anchor = i; break; }
+            }
 
-            XYZ d0 = chain[0].Direction;
+            var frames = new (XYZ N, XYZ V)[chain.Count];
+
+            XYZ d0 = chain[anchor].Direction;
             XYZ n = PerpendicularOf(d0);
             XYZ v = d0.CrossProduct(n);
             if (v.GetLength() < 1e-6) v = XYZ.BasisZ;
             v = v.Normalize();
             if (v.Z < 0) v = v.Negate(); // konvensi sama dengan OffsetVector
-            frames.Add((n, v));
+            frames[anchor] = (n, v);
 
-            for (int i = 1; i < chain.Count; i++)
+            // Parallel transport maju dari anchor ke ujung rantai
+            XYZ nf = n, vf = v;
+            for (int i = anchor + 1; i < chain.Count; i++)
             {
-                XYZ dPrev = chain[i - 1].Direction;
-                XYZ dNext = chain[i].Direction;
-                XYZ axis = dPrev.CrossProduct(dNext);
-                if (axis.GetLength() > 1e-9)
-                {
-                    Transform rot = Transform.CreateRotation(axis.Normalize(), dPrev.AngleTo(dNext));
-                    n = rot.OfVector(n);
-                    v = rot.OfVector(v);
-                }
-                // dPrev sejajar dNext (lurus / balik arah): frame dipertahankan
-                frames.Add((n, v));
+                RotateFrame(chain[i - 1].Direction, chain[i].Direction, ref nf, ref vf);
+                frames[i] = (nf, vf);
             }
 
-            return frames;
+            // Parallel transport mundur dari anchor ke awal rantai
+            XYZ nb = n, vb = v;
+            for (int i = anchor - 1; i >= 0; i--)
+            {
+                RotateFrame(chain[i + 1].Direction, chain[i].Direction, ref nb, ref vb);
+                frames[i] = (nb, vb);
+            }
+
+            return frames.ToList();
+        }
+
+        /// <summary>
+        /// Putar frame penampang mengikuti belokan dFrom -> dTo (sumbu = cross
+        /// product). Segmen sejajar/balik arah: frame dipertahankan.
+        /// </summary>
+        private static void RotateFrame(XYZ dFrom, XYZ dTo, ref XYZ n, ref XYZ v)
+        {
+            XYZ axis = dFrom.CrossProduct(dTo);
+            if (axis.GetLength() <= 1e-9) return;
+            Transform rot = Transform.CreateRotation(axis.Normalize(), dFrom.AngleTo(dTo));
+            n = rot.OfVector(n);
+            v = rot.OfVector(v);
+        }
+
+        /// <summary>
+        /// Info satu belokan rantai tray, dihitung sekali per jalur.
+        /// </summary>
+        private class BendInfo
+        {
+            public double AxisR;  // radius busur SUMBU tray di belokan (ft); 0 = siku
+            public XYZ Inward;    // arah dari sumbu menuju pusat busur
+            public double FitR;   // Bend Radius fitting tray terpilih (sisi dalam, ft); 0 = tak ada
+            public double SpanFt; // lebar (belokan horizontal) / tinggi (vertikal) tray
+        }
+
+        /// <summary>
+        /// Menghitung radius busur tiap belokan. PATOKAN UTAMA = parameter
+        /// "Bend Radius" fitting elbow tray yang DIPILIH user (konvensi family
+        /// tray Revit: diukur ke SISI DALAM belokan, sehingga radius sumbu =
+        /// Bend Radius + lebar/2). Bila fitting tak ditemukan / tak punya
+        /// parameter radius, fallback ke estimasi geometris dari mundurnya
+        /// ujung segmen (kurang akurat bila fitting punya perpanjangan lurus).
+        /// </summary>
+        private static List<BendInfo> ComputeBends(List<Line> chain,
+            List<FamilyInstance> fittings, double revitWmm, double revitHmm)
+        {
+            var bends = new List<BendInfo>();
+            for (int i = 0; i < chain.Count - 1; i++)
+            {
+                var info = new BendInfo();
+                info.AxisR = AxisBendRadius(chain[i], chain[i + 1], out XYZ inward);
+                info.Inward = inward;
+
+                if (chain[i].Direction.AngleTo(chain[i + 1].Direction) >= CollinearAngleRad)
+                {
+                    XYZ corner = IntersectLines(
+                        chain[i].GetEndPoint(0), chain[i].Direction,
+                        chain[i + 1].GetEndPoint(0), chain[i + 1].Direction);
+                    double fitR = corner != null ? FittingBendRadiusNear(fittings, corner) : 0;
+                    if (fitR > MinBendRadiusFt)
+                    {
+                        // Belokan vertikal (riser) memakai tinggi tray, bukan lebar
+                        double spanMm = Math.Abs(inward.Z) > 0.7 ? revitHmm : revitWmm;
+                        info.FitR = fitR;
+                        info.SpanFt = spanMm * MmToFt;
+                        info.AxisR = fitR + info.SpanFt / 2.0;
+                    }
+                }
+                bends.Add(info);
+            }
+            return bends;
+        }
+
+        /// <summary>
+        /// Bend Radius fitting tray terpilih yang paling dekat dengan titik
+        /// belok sumbu; 0 bila tidak ada fitting/parameter dalam jangkauan.
+        /// </summary>
+        private static double FittingBendRadiusNear(List<FamilyInstance> fittings, XYZ corner)
+        {
+            FamilyInstance best = null;
+            double bestDist = FittingSearchFt;
+            foreach (var fi in fittings)
+            {
+                double d = double.MaxValue;
+                try
+                {
+                    var cm = fi.MEPModel?.ConnectorManager;
+                    if (cm != null)
+                        foreach (Connector c in cm.Connectors)
+                            d = Math.Min(d, c.Origin.DistanceTo(corner));
+                }
+                catch { }
+                if (d == double.MaxValue && fi.Location is LocationPoint lp)
+                    d = lp.Point.DistanceTo(corner);
+                if (d < bestDist) { bestDist = d; best = fi; }
+            }
+            if (best == null) return 0;
+
+            foreach (string name in new[] { "Bend Radius", "Bending Radius", "BendRadius" })
+            {
+                try
+                {
+                    Parameter p = best.LookupParameter(name);
+                    if (p == null && best.Symbol != null) p = best.Symbol.LookupParameter(name);
+                    if (p != null && p.StorageType == StorageType.Double && p.AsDouble() > 0)
+                        return p.AsDouble();
+                }
+                catch { }
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Baca parameter panjang elemen dalam mm; 0 bila tidak ada.
+        /// </summary>
+        private static double ParamMm(Element e, BuiltInParameter bip)
+        {
+            try
+            {
+                Parameter p = e.get_Parameter(bip);
+                return p != null && p.StorageType == StorageType.Double
+                    ? p.AsDouble() / MmToFt : 0;
+            }
+            catch { return 0; }
         }
 
         /// <summary>
@@ -636,8 +799,8 @@ namespace CableTrayHub.Revit
         /// busur elbow tray; 0 bila tray menyiku langsung tanpa busur).
         /// </summary>
         private static List<XYZ> BuildOffsetPolyline(
-            List<Line> chain, List<(XYZ N, XYZ V)> frames, double lat, double vert,
-            out List<double> bendRadii)
+            List<Line> chain, List<(XYZ N, XYZ V)> frames, List<BendInfo> bendInfos,
+            double lat, double vert, double effOdMm, out List<double> bendRadii)
         {
             XYZ Off(int i) => frames[i].N * lat + frames[i].V * vert;
 
@@ -665,8 +828,21 @@ namespace CableTrayHub.Revit
                 // Radius konsentris kabel ini: radius sumbu tray dikurangi
                 // komponen offset ke arah pusat busur (kabel sisi dalam
                 // menikung lebih tajam, sisi luar lebih landai).
-                double axisR = AxisBendRadius(chain[i], chain[i + 1], out XYZ inward);
-                double r = axisR > MinBendRadiusFt ? axisR - offA.DotProduct(inward) : 0;
+                BendInfo bi = bendInfos[i];
+                double r = 0;
+                if (bi.AxisR > MinBendRadiusFt)
+                {
+                    r = bi.AxisR - offA.DotProduct(bi.Inward);
+                    if (bi.FitR > 0)
+                    {
+                        // Jepit agar busur conduit TIDAK KELUAR dari busur
+                        // elbow tray: minimal sisi dalam + setengah OD conduit,
+                        // maksimal sisi luar - setengah OD conduit.
+                        double rMin = bi.FitR + (effOdMm / 2.0) * MmToFt;
+                        double rMax = bi.FitR + bi.SpanFt - (effOdMm / 2.0) * MmToFt;
+                        if (rMax > rMin) r = Math.Clamp(r, rMin, rMax);
+                    }
+                }
                 bendRadii.Add(r > MinBendRadiusFt ? r : 0);
             }
 

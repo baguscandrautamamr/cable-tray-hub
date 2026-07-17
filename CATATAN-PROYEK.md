@@ -34,7 +34,7 @@ auto-deploy setiap push ke `main`).
 | File/Folder | Isi |
 |---|---|
 | `index.html` | Seluruh aplikasi web (multi-jalur per simulasi: `dbRoutes` panelFrom/panelTo/cables; kanvas penampang drag & drop menyimpan posisi mm tiap kabel) |
-| `sw.js` | Service worker (cache `cable-tray-hub-v4`; index network-first; API Google TIDAK diintersep) |
+| `sw.js` | Service worker (cache `cable-tray-hub-v5`; index network-first; API Google TIDAK diintersep) |
 | `Code.gs` | REST API Apps Script: `?action=getInitialData`, `?action=getSimulation&id=`, POST `saveSimulation`, sheet `Revit_Sync` untuk Push |
 | `Setup.gs` | `initSetup()` — mengisi katalog 185 kabel (identik dengan website) ke sheet `Katalog_Kabel`, `Tray_Templates`, `Simulasi_History` |
 | `revit-plugin/` | Plugin Revit 2025: `PullCommand.cs` (gambar conduit), `PushCommand.cs` (kirim data conduit ke sheet), `SyncStorage.cs` (Extensible Storage: mapping jalur→tray), `SimulationDialog.cs`, `ApiClient.cs` |
@@ -59,15 +59,41 @@ auto-deploy setiap push ke `main`).
   Radius busur tray dihitung geometris (R = T/tan(θ/2)); Bend Radius tiap elbow
   conduit = R ± offset kabel (sisi dalam tajam, sisi luar landai).
 
+**Perbaikan ronde uji ke-2 (17 Jul, dari temuan uji Revit + web):**
+1. **Anti-clash arm tray**: posisi conduit dijepit terhadap dimensi tray NYATA
+   di Revit (parameter Width/Height elemen terpilih) dengan jarak aman 10 mm
+   dari dinding + OD conduit efektif minimal 21 mm (kabel kecil tetap digambar
+   Revit sebagai conduit ukuran terkecil). Web juga memberi margin 10 mm dari
+   dinding samping (posisi default, batas drag, dan hasil simpan).
+2. **Riwayat lengkap & bisa diedit ulang**: kartu riwayat kini menampilkan
+   jumlah kabel + tipe per jenis; tombol Edit/Buka merestore SEMUA data dari
+   `detail` tersimpan (kabel+qty per jalur, dimensi tray, metode, spare,
+   sampai posisi tiap kabel di kanvas penampang).
+3. **Bend Radius elbow conduit berpatokan ke FITTING tray terpilih**: baca
+   parameter "Bend Radius" fitting elbow terdekat dari titik belok (konvensi
+   family tray Revit = radius SISI DALAM belokan → radius sumbu = BendRadius +
+   lebar/2). Tiap conduit dibuat konsentris & DIJEPIT agar busurnya tetap di
+   dalam annulus elbow tray (min sisi dalam + OD/2, max sisi luar − OD/2).
+   Estimasi geometris hanya fallback bila fitting tak punya parameter radius.
+4. **Trefoil tidak terbalik lagi**: frame penampang kini diikat ke segmen
+   HORIZONTAL pertama rantai (bukan segmen pertama sembarang) lalu parallel
+   transport maju+mundur — kalau rantai mulai dari riser vertikal, arah "atas"
+   tak lagi ambigu sehingga kabel puncak trefoil selalu di atas. Kanvas web:
+   kabel puncak trefoil kini tepat di tengah dua kabel dasar.
+
 **Belum diuji (kerjaan berikutnya):**
-1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull dengan
-   **elbow tray ikut diseleksi**. Cek: elbow konsentris, turunan vertikal
-   nyambung, posisi penampang tidak ter-mirror.
-2. Jalur yang pernah di-pull sebelum `7c5b241` mengingat seleksi lama TANPA
+1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:
+   cek conduit tidak menabrak arm tray, Bend Radius conduit mengikuti Bend
+   Radius elbow tray yang diselect (coba radius 100/200/300), trefoil apex di
+   atas, turunan vertikal nyambung.
+2. Uji web: simpan simulasi baru → buka tab Riwayat → kartu menampilkan daftar
+   kabel → Edit/Buka mengembalikan kabel+posisi persis.
+3. Jalur yang pernah di-pull sebelum `7c5b241` mengingat seleksi lama TANPA
    fitting — select ulang jalurnya saat diminta (atau hapus conduit ber-tag CTH).
-3. Kalau posisi kabel ter-mirror kiri-kanan: negasikan `lat` di PullCommand.
-4. Kalau Bend Radius tidak berubah: kemungkinan family elbow conduit mengunci
-   parameternya / namanya bukan "Bend Radius" — catat nama family-nya.
+4. Kalau posisi kabel ter-mirror kiri-kanan: negasikan `lat` di PullCommand.
+5. Kalau Bend Radius conduit tidak mengikuti fitting: cek nama parameter radius
+   family elbow TRAY (yang dibaca: "Bend Radius"/"Bending Radius"/"BendRadius",
+   instance lalu type) — catat nama family & parameternya.
 
 ## Cara Kerja Plugin (untuk pengujian)
 

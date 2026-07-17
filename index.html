@@ -1301,6 +1301,9 @@
     let activeDragIndex = -1;
     let currentLayoutMethod = '';
     let currentTrayWidth = 0;
+    // Jarak aman kabel terhadap dinding samping tray (mm) — mencegah conduit
+    // hasil Pull di Revit menabrak pinggir arm/rail cable tray.
+    const TRAY_SIDE_MARGIN_MM = 10;
 
     // Inisialisasi awal sistem
     window.onload = function() {
@@ -1679,8 +1682,9 @@ function showToast(message, type = "success") {
       const scaleX = (canvas.width - 40) / width;
       const trayX = 20;
       const trayY = 30;
-      let currentX = trayX + 4;
-      
+      // Mulai dari margin aman dinding kiri (bukan menempel rail tray)
+      let currentX = trayX + (TRAY_SIDE_MARGIN_MM * scaleX);
+
       const maxTrayHeightPx = 80;
       const trayHeightPx = Math.min(maxTrayHeightPx, height * scaleX);
       const baseLineY = trayY + trayHeightPx - 2;
@@ -1693,7 +1697,8 @@ function showToast(message, type = "success") {
 
         if (method === "Flat Spaced") currentX += 4;
         else if (method === "Trefoil" && idx % 3 === 2) {
-          drawX = currentX - radiusPx;
+          // Kabel puncak trefoil: DI ATAS dan tepat di tengah dua kabel dasar
+          drawX = currentX - (radiusPx * 2);
           drawY = baseLineY - (radiusPx * 2.8);
         }
 
@@ -1815,9 +1820,11 @@ function showToast(message, type = "success") {
       let dragY = (clientY - rect.top) * (canvas.height / rect.height);
       
       const ci = cableInstances[activeDragIndex];
-      
-      if (dragX < trayX + ci.radius) dragX = trayX + ci.radius;
-      if (dragX > trayX + trayWidthPx - ci.radius) dragX = trayX + trayWidthPx - ci.radius;
+
+      // Batas geser: sisakan margin aman dari dinding samping tray
+      const sideMarginPx = TRAY_SIDE_MARGIN_MM * scaleX;
+      if (dragX < trayX + sideMarginPx + ci.radius) dragX = trayX + sideMarginPx + ci.radius;
+      if (dragX > trayX + trayWidthPx - sideMarginPx - ci.radius) dragX = trayX + trayWidthPx - sideMarginPx - ci.radius;
       if (dragY < trayY + ci.radius) dragY = trayY + ci.radius;
       if (dragY > trayY + trayHeightPx - ci.radius) dragY = trayY + trayHeightPx - ci.radius;
 
@@ -2046,8 +2053,51 @@ function showToast(message, type = "success") {
       // Restore tray type
       const trayTypeEl = document.getElementById('simTrayType');
       if (trayTypeEl && h.jenisTray) trayTypeEl.value = h.jenisTray;
-      // Restore routes from namaProyek label
-      if (h.namaProyek) {
+
+      const det = h.detail;
+      if (det && det.routes && det.routes.length > 0) {
+        // ---- Restore LENGKAP dari detail tersimpan (kabel + qty + posisi) ----
+        if (det.tray) {
+          if (det.tray.jenis && trayTypeEl) trayTypeEl.value = det.tray.jenis;
+          if (det.tray.lebar > 0) document.getElementById('simCustomWidth').value = det.tray.lebar;
+          if (det.tray.tinggi > 0) document.getElementById('simCustomHeight').value = det.tray.tinggi;
+          if (det.tray.maxLoad > 0) document.getElementById('simCustomMaxLoad').value = det.tray.maxLoad;
+        }
+        const spareVal = parseFloat(det.spare || h.persenSpare || '0');
+        if (!isNaN(spareVal)) document.getElementById('simSpareSpace').value = spareVal;
+        const method = det.metode || h.metode;
+        if (method) {
+          const radio = document.querySelector('input[name="layoutMethod"][value="' + method + '"]');
+          if (radio) radio.checked = true;
+        }
+
+        dbRoutes = [];
+        routeCounter = 0;
+        det.routes.forEach(rt => {
+          routeCounter++;
+          dbRoutes.push({
+            id: routeCounter,
+            panelFrom: rt.panelFrom || '',
+            panelTo: rt.panelTo || '',
+            cables: (rt.kabel || []).map(k => ({ cableId: k.id, qty: parseInt(k.qty) || 1 }))
+          });
+        });
+        renderCableGroups();
+        dbRoutes.forEach(r => {
+          if (r.cables && r.cables.length > 0) {
+            r.cables.forEach(c => addCableToGroup(r.id, c.cableId, c.qty, false));
+          } else {
+            addCableToGroup(r.id, '', 1, false);
+          }
+        });
+        refreshDeleteButtons();
+        currentLayoutMethod = '';
+        currentTrayWidth = -1;
+        runCalculation();
+        // Kembalikan posisi kabel di kanvas penampang persis seperti tersimpan
+        applySavedCablePositions(det);
+      } else if (h.namaProyek) {
+        // ---- Fallback riwayat lama (tanpa detail): hanya nama panel ----
         const parts = h.namaProyek.split(', ');
         dbRoutes = [];
         routeCounter = 0;
@@ -2059,12 +2109,69 @@ function showToast(message, type = "success") {
         renderCableGroups();
         dbRoutes.forEach(r => addCableToGroup(r.id, '', 1, false));
         refreshDeleteButtons();
+        currentLayoutMethod = '';
+        currentTrayWidth = -1;
+        runCalculation();
       }
-      currentLayoutMethod = '';
-      currentTrayWidth = -1;
-      runCalculation();
       openTab('simulation');
       showToast('Data simulasi ' + id + ' dimuat kembali.', 'success');
+    }
+
+    /**
+     * Menempatkan ulang lingkaran kabel di kanvas penampang sesuai koordinat
+     * mm yang tersimpan di detail simulasi (kebalikan dari nextCablePosMm).
+     */
+    function applySavedCablePositions(det) {
+      const cvs = document.getElementById('trayVisualizer');
+      if (!cvs || !det || !det.routes) return;
+      const width = parseFloat(document.getElementById('simCustomWidth').value) || 100;
+      const height = parseFloat(document.getElementById('simCustomHeight').value) || 100;
+      const scaleX = (cvs.width - 40) / width;
+      const trayX = 20, trayY = 30;
+      const trayHeightPx = Math.min(80, height * scaleX);
+      const baseLineY = trayY + trayHeightPx - 2;
+
+      let idx = 0;
+      det.routes.forEach(rt => (rt.kabel || []).forEach(k => {
+        const posisi = k.posisi || [];
+        const qty = parseInt(k.qty) || 0;
+        for (let q = 0; q < qty; q++) {
+          if (idx >= cableInstances.length) return;
+          const p = posisi[q];
+          if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+            cableInstances[idx].x = trayX + (p.x * scaleX);
+            cableInstances[idx].y = baseLineY - (p.y * scaleX);
+          }
+          idx++;
+        }
+      }));
+      drawTrayFromState();
+    }
+
+    /**
+     * Ringkasan isi kabel sebuah riwayat (jumlah total + tipe kabel per jenis)
+     * untuk ditampilkan di kartu riwayat. Kosong bila riwayat lama tanpa detail.
+     */
+    function historyCableSummaryHTML(h) {
+      const det = h.detail;
+      if (!det || !det.routes || det.routes.length === 0) return '';
+      let total = 0;
+      const perName = {};
+      det.routes.forEach(rt => (rt.kabel || []).forEach(k => {
+        const q = parseInt(k.qty) || 0;
+        if (q > 0) {
+          total += q;
+          perName[k.nama || k.id || '?'] = (perName[k.nama || k.id || '?'] || 0) + q;
+        }
+      }));
+      if (total === 0) return '';
+      const names = Object.keys(perName);
+      const shown = names.slice(0, 3).map(n =>
+        `<span class="px-2 py-0.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-md font-bold">${perName[n]}× ${n}</span>`).join(' ');
+      const more = names.length > 3 ? ` <span class="font-bold">+${names.length - 3} tipe lagi</span>` : '';
+      return `<div class="flex items-center gap-1.5 flex-wrap text-slate-400">
+            <span class="font-bold"><i class="fa-solid fa-plug text-[9px]"></i> ${total} kabel</span> ${shown}${more}
+          </div>`;
     }
 
     function renderHistoryList(clear) {
@@ -2091,7 +2198,9 @@ function showToast(message, type = "success") {
           <div class="flex items-center gap-1.5 text-slate-400 flex-wrap">
             <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md font-bold">${h.jenisTray || '-'}</span>
             <span>Lebar ${h.lebarTray || '-'} mm</span>
+            ${h.metode ? `<span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md font-bold">${h.metode}</span>` : ''}
           </div>
+          ${historyCableSummaryHTML(h)}
           <div class="text-slate-400">${h.tanggal || ''} &bull; <span class="font-bold">${h.user || '-'}</span></div>
           <div class="flex gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
             <button onclick="editHistory('${h.id}')" class="flex-1 py-1.5 text-[10px] font-black bg-orange-500/10 text-orange-600 rounded-xl hover:bg-orange-500 hover:text-white transition-colors flex items-center justify-center gap-1">
@@ -2138,7 +2247,8 @@ function showToast(message, type = "success") {
         const rMm = (ci.diameter || diaMm) / 2;
         let xMm = (ci.x - cvTrayX) / cvScaleX;
         let yMm = (cvBaseLineY - ci.y) / cvScaleX;
-        xMm = Math.max(rMm, Math.min(width - rMm, xMm));
+        // Jepit dengan margin aman dinding samping (anti clash arm tray)
+        xMm = Math.max(TRAY_SIDE_MARGIN_MM + rMm, Math.min(width - TRAY_SIDE_MARGIN_MM - rMm, xMm));
         yMm = Math.max(rMm, Math.min(height - rMm, yMm));
         return { x: Math.round(xMm * 10) / 10, y: Math.round(yMm * 10) / 10 };
       }

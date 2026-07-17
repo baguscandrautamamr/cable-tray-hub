@@ -81,6 +81,18 @@ auto-deploy setiap push ke `main`).
    tak lagi ambigu sehingga kabel puncak trefoil selalu di atas. Kanvas web:
    kabel puncak trefoil kini tepat di tengah dua kabel dasar.
 
+**Perbaikan ronde uji ke-3 (17 Jul, temuan lanjutan di Revit):**
+1. **Interior tray diukur dari geometri solid** (bukan parameter): probe garis
+   di 3 stasiun sepanjang sumbu → puncak plat dasar (kabel duduk DI ATAS plat,
+   bukan menembus dasar setebal 25.4 mm) + sisi DALAM rail kiri/kanan.
+   Koordinat y website kini dipetakan dari puncak plat dasar interior.
+2. **Family elbow conduit ber-lookup table terdeteksi otomatis**: probe elbow
+   percobaan di SubTransaction (langsung rollback). Kalau Bend Radius terkunci
+   formula (mis. `ACT_Elbow_RMC`: `size_lookup(..., "BRad", ...)`), belokan
+   berradius digambar sebagai **rangkaian chord per ≤15° mengikuti busur
+   konsentris elbow tray** — tiap kabel tetap dapat radius sendiri dan tetap
+   di dalam annulus elbow. Kalau radius bisa di-set, tetap elbow tunggal.
+
 **Belum diuji (kerjaan berikutnya):**
 1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:
    cek conduit tidak menabrak arm tray, Bend Radius conduit mengikuti Bend

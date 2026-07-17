@@ -111,7 +111,19 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
    SELURUHNYA di bawah sumbu dihitung lantai (yang melintasi sumbu diabaikan);
    rail samping juga hanya yang seluruhnya di satu sisi.
 
+**Ronde 6 (17 Jul): jarak aman conduit bisa diatur dari dialog Pull**
+- Temuan uji: conduit masih menabrak penampang tray (baris kabel menyentuh
+  plat dasar). Fix: dialog Pull kini punya dua input "Jarak aman conduit (mm)"
+  — **ke dasar tray** dan **ke arm samping** (default 10/10, diingat di
+  config `%APPDATA%\CableTrayHub\config.json`). Jarak dasar mengangkat seluruh
+  susunan kabel dari puncak plat; jarak samping menggantikan konstanta 10 mm
+  yang dulu hard-coded. Clamp posisi tetap memakai OD conduit efektif (min
+  21 mm) sehingga badan conduit — bukan hanya sumbunya — yang diberi jarak.
+
 **Belum diuji (kerjaan berikutnya):**
+0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
+   → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari
+   plat & menjauh dari arm, nilai diingat di pull berikutnya.
 1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:
    cek conduit tidak menabrak arm tray, Bend Radius conduit mengikuti Bend
    Radius elbow tray yang diselect (coba radius 100/200/300), trefoil apex di

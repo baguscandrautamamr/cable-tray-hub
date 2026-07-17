@@ -16,16 +16,20 @@ namespace CableTrayHub.Revit
         private readonly Button _cancelButton;
         private readonly ListBox _routeList;
         private readonly Label _statusLabel;
+        private readonly NumericUpDown _bottomClrBox;
+        private readonly NumericUpDown _sideClrBox;
 
         public Simulation Result { get; private set; }
         public string ApiUrl => _urlBox.Text.Trim();
         public string SimulationId => _idBox.Text.Trim();
+        public double BottomClearanceMm => (double)_bottomClrBox.Value;
+        public double SideClearanceMm => (double)_sideClrBox.Value;
 
         public SimulationDialog(PluginConfig config)
         {
             Text = "Cable Tray Hub — Pull Simulasi dari Website";
             Width = 600;
-            Height = 500;
+            Height = 560;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -49,22 +53,52 @@ namespace CableTrayHub.Revit
 
             _routeList = new ListBox { Left = 15, Top = 168, Width = 550, Height = 220 };
 
+            // Jarak aman conduit terhadap tray (mm) — diingat antar sesi.
+            var clrLabel = new Label
+            {
+                Text = "Jarak aman conduit (mm):", Left = 15, Top = 402, Width = 160
+            };
+            var bottomClrLabel = new Label
+            {
+                Text = "ke dasar tray", Left = 180, Top = 402, Width = 85,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+            _bottomClrBox = new NumericUpDown
+            {
+                Left = 270, Top = 398, Width = 70,
+                Minimum = 0, Maximum = 500, DecimalPlaces = 0, Increment = 5,
+                Value = (decimal)Math.Clamp(config.BottomClearanceMm, 0, 500)
+            };
+            var sideClrLabel = new Label
+            {
+                Text = "ke arm samping", Left = 350, Top = 402, Width = 100,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+            _sideClrBox = new NumericUpDown
+            {
+                Left = 455, Top = 398, Width = 70,
+                Minimum = 0, Maximum = 500, DecimalPlaces = 0, Increment = 5,
+                Value = (decimal)Math.Clamp(config.SideClearanceMm, 0, 500)
+            };
+
             _okButton = new Button
             {
                 Text = "Lanjut: Sinkronkan ke Model ➜",
-                Left = 255, Top = 405, Width = 210, Height = 32,
+                Left = 255, Top = 440, Width = 210, Height = 32,
                 Enabled = false, DialogResult = DialogResult.OK
             };
             _cancelButton = new Button
             {
-                Text = "Batal", Left = 475, Top = 405, Width = 90, Height = 32,
+                Text = "Batal", Left = 475, Top = 440, Width = 90, Height = 32,
                 DialogResult = DialogResult.Cancel
             };
 
             Controls.AddRange(new Control[]
             {
                 urlLabel, _urlBox, idLabel, _idBox, _fetchButton,
-                _statusLabel, _routeList, _okButton, _cancelButton
+                _statusLabel, _routeList,
+                clrLabel, bottomClrLabel, _bottomClrBox, sideClrLabel, _sideClrBox,
+                _okButton, _cancelButton
             });
 
             AcceptButton = _okButton;

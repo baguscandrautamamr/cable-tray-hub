@@ -167,6 +167,9 @@ namespace CableTrayHub.Revit
     {
         public string ApiUrl { get; set; } = "";
         public string LastSimulationId { get; set; } = "";
+        // Jarak aman conduit terhadap tray (mm) — bisa diatur dari dialog Pull.
+        public double BottomClearanceMm { get; set; } = 10;
+        public double SideClearanceMm { get; set; } = 10;
 
         private static string ConfigPath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

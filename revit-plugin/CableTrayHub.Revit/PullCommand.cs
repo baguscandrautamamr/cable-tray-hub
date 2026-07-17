@@ -32,6 +32,9 @@ namespace CableTrayHub.Revit
         private const double MinSegmentFt = 50 * MmToFt;
         // Dua segmen dengan sudut < ~1° dianggap segaris: tidak perlu elbow.
         private const double CollinearAngleRad = 0.02;
+        // Radius busur tray minimal agar elbow conduit dibuat konsentris
+        // mengikutinya; di bawah ini dianggap sambungan siku biasa.
+        private const double MinBendRadiusFt = 50 * MmToFt;
 
         private class RoutePlan
         {
@@ -218,9 +221,11 @@ namespace CableTrayHub.Revit
                         string tag = TagPrefix + route.Key + "|" + cable.Nama;
 
                         var runConduits = new List<Conduit>();
+                        List<double> bendRadii = null;
                         if (isChained)
                         {
-                            List<XYZ> pts = BuildOffsetPolyline(chain, frames, lat, vert);
+                            List<XYZ> pts = BuildOffsetPolyline(chain, frames, lat, vert,
+                                out bendRadii);
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
@@ -241,11 +246,18 @@ namespace CableTrayHub.Revit
                             }
                         }
 
+                        // Radius elbow per belokan hanya sahih bila jumlah conduit
+                        // utuh (tak ada segmen pendek yang gagal dibuat).
+                        bool radiiAligned = bendRadii != null &&
+                                            runConduits.Count - 1 == bendRadii.Count;
+
                         string fittingTag = TagPrefix + route.Key + "|fitting";
                         for (int i = 0; i < runConduits.Count - 1; i++)
                         {
                             bends++;
-                            if (TryCreateElbow(doc, runConduits[i], runConduits[i + 1], fittingTag))
+                            double radius = radiiAligned ? bendRadii[i] : 0;
+                            if (TryCreateElbow(doc, runConduits[i], runConduits[i + 1],
+                                    fittingTag, radius))
                                 elbows++;
                         }
                     }
@@ -398,7 +410,12 @@ namespace CableTrayHub.Revit
             return conduit;
         }
 
-        private static bool TryCreateElbow(Document doc, Conduit a, Conduit b, string tag)
+        /// <param name="bendRadiusFt">
+        /// Radius busur yang diinginkan (konsentris dengan elbow tray);
+        /// 0 = pakai radius default family elbow.
+        /// </param>
+        private static bool TryCreateElbow(Document doc, Conduit a, Conduit b, string tag,
+            double bendRadiusFt)
         {
             try
             {
@@ -424,12 +441,32 @@ namespace CableTrayHub.Revit
                     if (cmt != null && !cmt.IsReadOnly) cmt.Set(tag);
                 }
                 catch { }
+
+                if (bendRadiusFt > MinBendRadiusFt) TrySetBendRadius(elbow, bendRadiusFt);
                 return true;
             }
             catch
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Set parameter "Bend Radius" elbow conduit agar busurnya konsentris
+        /// dengan elbow tray. Revit otomatis memangkas kedua conduit sampai
+        /// titik singgung busur. Bila family mengunci radius (read-only /
+        /// radius terlalu kecil untuk diameternya), elbow dibiarkan default.
+        /// </summary>
+        private static void TrySetBendRadius(FamilyInstance elbow, double radiusFt)
+        {
+            try
+            {
+                Parameter p = elbow.LookupParameter("Bend Radius")
+                              ?? elbow.LookupParameter("Bending Radius");
+                if (p != null && !p.IsReadOnly && p.StorageType == StorageType.Double)
+                    p.Set(radiusFt);
+            }
+            catch { /* radius tak didukung family -> pakai default */ }
         }
 
         // =================================================================
@@ -595,13 +632,17 @@ namespace CableTrayHub.Revit
         /// segmen memakai frame hasil parallel transport. Titik belokan dihitung
         /// dari perpotongan dua garis offset (miter corner) agar conduit paralel
         /// tetap rapi di tikungan; belokan segaris dilewati (jadi satu conduit).
+        /// bendRadii[j] = radius elbow untuk belokan ke-j (konsentris dengan
+        /// busur elbow tray; 0 bila tray menyiku langsung tanpa busur).
         /// </summary>
         private static List<XYZ> BuildOffsetPolyline(
-            List<Line> chain, List<(XYZ N, XYZ V)> frames, double lat, double vert)
+            List<Line> chain, List<(XYZ N, XYZ V)> frames, double lat, double vert,
+            out List<double> bendRadii)
         {
             XYZ Off(int i) => frames[i].N * lat + frames[i].V * vert;
 
             var points = new List<XYZ> { chain[0].GetEndPoint(0) + Off(0) };
+            bendRadii = new List<double>();
 
             for (int i = 0; i < chain.Count - 1; i++)
             {
@@ -620,11 +661,46 @@ namespace CableTrayHub.Revit
                 XYZ corner = IntersectLines(a1, a2 - a1, b1, b2 - b1)
                              ?? (a2 + b1) / 2.0; // hampir paralel -> titik tengah
                 points.Add(corner);
+
+                // Radius konsentris kabel ini: radius sumbu tray dikurangi
+                // komponen offset ke arah pusat busur (kabel sisi dalam
+                // menikung lebih tajam, sisi luar lebih landai).
+                double axisR = AxisBendRadius(chain[i], chain[i + 1], out XYZ inward);
+                double r = axisR > MinBendRadiusFt ? axisR - offA.DotProduct(inward) : 0;
+                bendRadii.Add(r > MinBendRadiusFt ? r : 0);
             }
 
             points.Add(chain[^1].GetEndPoint(1) + Off(chain.Count - 1));
 
             return points;
+        }
+
+        /// <summary>
+        /// Radius busur elbow tray pada sambungan dua segmen, dihitung dari
+        /// geometri: ujung kedua segmen mundur sejauh T dari titik potong
+        /// sumbunya (T = panjang tangen busur), sehingga R = T / tan(θ/2).
+        /// Tray yang menyiku langsung (gap ≈ 0) menghasilkan R ≈ 0.
+        /// inward = arah dari sumbu menuju pusat busur (sisi dalam tikungan).
+        /// </summary>
+        private static double AxisBendRadius(Line a, Line b, out XYZ inward)
+        {
+            inward = XYZ.BasisZ;
+
+            XYZ d1 = a.Direction, d2 = b.Direction;
+            double angle = d1.AngleTo(d2);
+            if (angle < CollinearAngleRad || angle > Math.PI - 0.05) return 0;
+
+            XYZ c = IntersectLines(a.GetEndPoint(0), d1, b.GetEndPoint(0), d2);
+            if (c == null) return 0;
+
+            double t = (a.GetEndPoint(1).DistanceTo(c) + b.GetEndPoint(0).DistanceTo(c)) / 2.0;
+            double r = t / Math.Tan(angle / 2.0);
+
+            XYZ w = d1.CrossProduct(d2);
+            if (w.GetLength() < 1e-9) return 0;
+            inward = w.Normalize().CrossProduct(d1).Normalize();
+
+            return r;
         }
 
         /// <summary>

@@ -111,14 +111,24 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
    SELURUHNYA di bawah sumbu dihitung lantai (yang melintasi sumbu diabaikan);
    rail samping juga hanya yang seluruhnya di satu sisi.
 
-**Ronde 6 (17 Jul): jarak dasar jadi OFFSET TETAP 25.4 mm**
-Deteksi lantai dari geometri (ronde 3/5) terbukti tidak andal antar family —
-conduit masih menabrak plat dasar. Sekarang bawah conduit selalu diangkat
-25.4 mm (konstanta `BottomClearanceMm`) dari base bawah tray Revit; deteksi
-geometri hanya tersisa untuk sisi dalam rail kiri/kanan (`MeasureSideRails`).
-Kalau proyek lain platnya lebih tipis/tebal, ubah konstanta itu.
+**Ronde 6 (17 Jul, gabungan 2 sesi): jarak aman conduit dari dialog Pull,
+referensi = base bawah tray**
+- Temuan uji: conduit masih menabrak penampang tray (baris kabel menyentuh
+  plat dasar). Deteksi lantai dari geometri (ronde 3/5) terbukti tidak andal
+  antar family — DICABUT; probe geometri hanya tersisa untuk sisi dalam rail
+  kiri/kanan (`MeasureSideRails`).
+- Referensi vertikal kini BASE BAWAH tray + jarak aman dasar. Dialog Pull
+  punya dua input "Jarak aman conduit (mm)" — **ke dasar tray** (default
+  **25.4** = tebal plat, permintaan lapangan) dan **ke arm samping** (default
+  10), diingat di config `%APPDATA%\CableTrayHub\config.json`. Catatan: config
+  yang sudah tersimpan dengan nilai lama tidak ikut berubah — atur dari dialog.
+- Clamp posisi tetap memakai OD conduit efektif (min 21 mm) sehingga badan
+  conduit — bukan hanya sumbunya — yang diberi jarak.
 
 **Belum diuji (kerjaan berikutnya):**
+0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
+   → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari
+   plat & menjauh dari arm, nilai diingat di pull berikutnya.
 1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:
    cek conduit tidak menabrak arm tray, Bend Radius conduit mengikuti Bend
    Radius elbow tray yang diselect (coba radius 100/200/300), trefoil apex di

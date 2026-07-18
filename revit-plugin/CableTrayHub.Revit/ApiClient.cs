@@ -167,6 +167,11 @@ namespace CableTrayHub.Revit
     {
         public string ApiUrl { get; set; } = "";
         public string LastSimulationId { get; set; } = "";
+        // Jarak aman conduit terhadap tray (mm) — bisa diatur dari dialog Pull.
+        // Dasar default 25.4 mm (setebal plat dasar tray) agar conduit tidak
+        // menabrak penampang tray.
+        public double BottomClearanceMm { get; set; } = 25.4;
+        public double SideClearanceMm { get; set; } = 10;
 
         private static string ConfigPath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

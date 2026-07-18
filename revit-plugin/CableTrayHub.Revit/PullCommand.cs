@@ -35,12 +35,9 @@ namespace CableTrayHub.Revit
         // Radius busur tray minimal agar elbow conduit dibuat konsentris
         // mengikutinya; di bawah ini dianggap sambungan siku biasa.
         private const double MinBendRadiusFt = 50 * MmToFt;
-        // Jarak aman conduit terhadap dinding/arm tray (mm) supaya tidak clash.
-        private const double SideClearanceMm = 10;
-        // Jarak TETAP dari base bawah tray ke bawah conduit (mm) — setebal plat
-        // dasar tray, agar conduit duduk di atas plat dan tidak menabrak
-        // penampang tray (permintaan lapangan: 25.4 mm / 1 inci).
-        private const double BottomClearanceMm = 25.4;
+        // Jarak aman conduit terhadap dasar/arm tray diatur user lewat dialog
+        // Pull (tersimpan di PluginConfig). Default dasar 25.4 mm (setebal
+        // plat dasar tray), default samping 10 mm.
         // OD conduit terkecil yang umum tersedia; kabel kecil (mis. De 3.1 mm)
         // tetap digambar Revit sebagai conduit sebesar ini, jadi jarak ke
         // dinding tray dihitung dari OD efektif, bukan diameter kabel.
@@ -72,8 +69,13 @@ namespace CableTrayHub.Revit
                 sim = dialog.Result;
                 config.ApiUrl = dialog.ApiUrl;
                 config.LastSimulationId = dialog.SimulationId;
+                config.BottomClearanceMm = dialog.BottomClearanceMm;
+                config.SideClearanceMm = dialog.SideClearanceMm;
                 config.Save();
             }
+
+            double sideClrFt = config.SideClearanceMm * MmToFt;
+            double bottomClrFt = config.BottomClearanceMm * MmToFt;
 
             var routes = sim.GetRoutes();
             var mapping = SyncStorage.Load(doc);
@@ -216,14 +218,14 @@ namespace CableTrayHub.Revit
                     if (revitWmm <= 0) revitWmm = trayWmm;
                     if (revitHmm <= 0) revitHmm = trayHmm;
 
-                    // Lantai duduk kabel: JARAK TETAP 25.4 mm dari base bawah
-                    // tray (setebal plat dasar) — deteksi geometri terbukti
-                    // tidak andal antar family, jadi dipakai offset pasti.
-                    // Sisi dalam rail kiri/kanan tetap diukur dari geometri
-                    // solid (tebal rail tidak ter-ekspos sebagai parameter).
+                    // Referensi vertikal = BASE BAWAH tray (deteksi lantai dari
+                    // geometri terbukti tidak andal antar family). Kabel
+                    // diangkat sebesar jarak aman dasar dari dialog Pull
+                    // (default 25.4 mm, setebal plat dasar). Sisi dalam rail
+                    // kiri/kanan tetap diukur dari geometri solid.
                     double halfWFt = revitWmm / 2.0 * MmToFt;
                     double halfHFt = revitHmm / 2.0 * MmToFt;
-                    double floorVFt = -halfHFt + BottomClearanceMm * MmToFt;
+                    double floorVFt = -halfHFt;
                     double latMinFt = -halfWFt, latMaxFt = halfWFt;
                     foreach (var tray in plan.Trays)
                     {
@@ -255,34 +257,38 @@ namespace CableTrayHub.Revit
                         CableInfo cable = slots[slot].Cable;
                         PosXY pos = slots[slot].Pos;
 
+                        // Kabel kecil tetap digambar Revit sebagai conduit
+                        // ukuran terkecil — jarak aman dihitung dari OD efektif.
+                        double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
+                        double effRFt = (effOdMm / 2.0) * MmToFt;
+
                         // Offset penampang relatif sumbu tray. Lateral: dari
                         // tengah lebar. Vertikal: y website diukur dari dasar
-                        // pakai tray -> dipetakan mulai floorVFt (25.4 mm di
-                        // atas base bawah), sehingga kabel duduk di atas plat
-                        // dasar, bukan menabrak penampang tray.
+                        // pakai tray -> dipetakan dari BASE BAWAH tray plus
+                        // jarak aman dasar dari dialog (default 25.4 mm),
+                        // sehingga kabel duduk di atas plat dasar dan tidak
+                        // menabrak penampang tray.
                         double lat, vert;
                         if (pos != null)
                         {
                             lat = (pos.X - trayWmm / 2.0) * MmToFt;
-                            vert = floorVFt + pos.Y * MmToFt;
+                            vert = floorVFt + bottomClrFt + pos.Y * MmToFt;
                         }
                         else
                         {
                             lat = (slot - (slots.Count - 1) / 2.0) * spacingFt;
-                            vert = floorVFt + (cable.Diameter / 2.0) * MmToFt; // duduk di dasar pakai
+                            vert = floorVFt + bottomClrFt + effRFt; // duduk di atas jarak aman
                         }
 
                         // Jepit posisi agar seluruh badan conduit tetap di
-                        // ruang interior tray + jarak aman dari rail samping.
-                        double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
-                        double effRFt = (effOdMm / 2.0) * MmToFt;
-                        double clrFt = SideClearanceMm * MmToFt;
-                        double latLo = latMinFt + clrFt + effRFt;
-                        double latHi = latMaxFt - clrFt - effRFt;
+                        // ruang interior tray + jarak aman dari plat dasar
+                        // dan rail samping (keduanya dari dialog Pull).
+                        double latLo = latMinFt + sideClrFt + effRFt;
+                        double latHi = latMaxFt - sideClrFt - effRFt;
                         lat = latHi > latLo
                             ? Math.Clamp(lat, latLo, latHi)
                             : (latLo + latHi) / 2.0;
-                        double vLo = floorVFt + effRFt;
+                        double vLo = floorVFt + bottomClrFt + effRFt;
                         double vHi = Math.Max(vLo, halfHFt - effRFt);
                         vert = Math.Clamp(vert, vLo, vHi);
 

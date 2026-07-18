@@ -161,6 +161,17 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
   daripada kabel saling menimpa). Jepit vertikal tetap per kabel karena
   jarak dasar sudah seragam.
 
+**Ronde 11 (18 Jul): kabel boleh melebihi tinggi tray (fix trefoil tabrakan)**
+- Temuan uji: trefoil kabel besar tabrakan — kabel puncak lebih tinggi dari
+  tray sehingga DIJEPIT turun (di web saat simpan posisi & di Revit saat
+  gambar) dan tenggelam ke dua kabel dasarnya. Fix: penjepit vertikal ATAS
+  dihapus di ketiga tempat (web: simpan posisi + batas drag kanvas; Revit:
+  vertArr) — kabel sah melebihi tinggi tray, yang dijaga hanya jarak ke dasar.
+  sw cache v9.
+- ⚠ Simulasi yang DISIMPAN sebelum fix ini menyimpan y puncak yang sudah
+  terjepit — buka simulasinya, klik reset layout / atur ulang, lalu simpan
+  ulang agar posisi apex benar sebelum di-pull.
+
 **Belum diuji (kerjaan berikutnya):**
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari

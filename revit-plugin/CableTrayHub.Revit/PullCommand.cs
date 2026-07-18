@@ -322,11 +322,12 @@ namespace CableTrayHub.Revit
                         }
 
                         latArr[slot] = lat;
-                        // Vertikal cukup dijepit per kabel: jarak dasar sudah
-                        // seragam lewat bottomClrFt, jadi formasi tidak rusak.
+                        // Vertikal hanya dijepit ke BAWAH (jarak aman dasar).
+                        // Kabel BOLEH melebihi tinggi tray — menjepit ke atas
+                        // menekan kabel puncak trefoil besar masuk ke dua
+                        // kabel dasarnya (tabrakan).
                         double vLo = floorVFt + bottomClrFt + effRFt;
-                        double vHi = Math.Max(vLo, halfHFt - effRFt);
-                        vertArr[slot] = Math.Clamp(vert, vLo, vHi);
+                        vertArr[slot] = Math.Max(vert, vLo);
                     }
 
                     // Geser seluruh susunan agar badan conduit terluar tetap

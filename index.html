@@ -1853,7 +1853,9 @@ function showToast(message, type = "success") {
       const sideMarginPx = getSideMarginMm() * scaleX;
       if (dragX < trayX + sideMarginPx + ci.radius) dragX = trayX + sideMarginPx + ci.radius;
       if (dragX > trayX + trayWidthPx - sideMarginPx - ci.radius) dragX = trayX + trayWidthPx - sideMarginPx - ci.radius;
-      if (dragY < trayY + ci.radius) dragY = trayY + ci.radius;
+      // Ke atas boleh keluar dari tray (sampai tepi kanvas) — kabel puncak
+      // trefoil besar sah melebihi tinggi tray; ke bawah tetap di atas dasar.
+      if (dragY < ci.radius) dragY = ci.radius;
       if (dragY > trayY + trayHeightPx - ci.radius) dragY = trayY + trayHeightPx - ci.radius;
 
       ci.x = dragX;
@@ -2312,10 +2314,12 @@ function showToast(message, type = "success") {
         const rMm = (ci.diameter || diaMm) / 2;
         let xMm = (ci.x - cvTrayX) / cvScaleX;
         let yMm = (cvBaseLineY - ci.y) / cvScaleX;
-        // Jepit dengan jarak dinding samping sesuai input user
+        // Jepit dengan jarak dinding samping sesuai input user.
+        // Vertikal hanya dijepit ke bawah: kabel boleh melebihi tinggi tray
+        // (kabel puncak trefoil besar), yang penting tidak menembus dasar.
         const sideMm = getSideMarginMm();
         xMm = Math.max(sideMm + rMm, Math.min(width - sideMm - rMm, xMm));
-        yMm = Math.max(rMm, Math.min(height - rMm, yMm));
+        yMm = Math.max(rMm, yMm);
         return { x: Math.round(xMm * 10) / 10, y: Math.round(yMm * 10) / 10 };
       }
 

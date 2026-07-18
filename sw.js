@@ -1,4 +1,4 @@
-const CACHE = 'cable-tray-hub-v8';
+const CACHE = 'cable-tray-hub-v9';
 const ASSETS = [
   '/',
   '/index.html',

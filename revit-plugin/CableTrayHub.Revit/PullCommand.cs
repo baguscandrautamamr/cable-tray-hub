@@ -284,7 +284,14 @@ namespace CableTrayHub.Revit
                         ? ComputeBends(chain, plan.Fittings, revitWmm, revitHmm)
                         : null;
 
-                    int created = 0, elbows = 0, bends = 0;
+                    // Posisi penampang SEMUA slot dihitung dulu; pelanggaran
+                    // jarak aman samping dikoreksi dengan MENGGESER SELURUH
+                    // susunan serempak. Menjepit per-conduit membuat hanya
+                    // kabel pinggir yang bergeser lalu menimpa tetangganya
+                    // (susunan trefoil rusak saat jarak samping besar).
+                    var latArr = new double[slots.Count];
+                    var vertArr = new double[slots.Count];
+                    var effOdArr = new double[slots.Count];
                     for (int slot = 0; slot < slots.Count; slot++)
                     {
                         CableInfo cable = slots[slot].Cable;
@@ -294,6 +301,7 @@ namespace CableTrayHub.Revit
                         // ukuran terkecil — jarak aman dihitung dari OD efektif.
                         double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
                         double effRFt = (effOdMm / 2.0) * MmToFt;
+                        effOdArr[slot] = effOdMm;
 
                         // Offset penampang relatif sumbu tray. Lateral: dari
                         // tengah lebar. Vertikal: y website diukur dari DASAR
@@ -313,17 +321,47 @@ namespace CableTrayHub.Revit
                             vert = floorVFt + bottomClrFt + effRFt; // duduk di atas jarak aman
                         }
 
-                        // Jepit posisi agar seluruh badan conduit tetap di
-                        // ruang interior tray + jarak aman dari plat dasar
-                        // dan rail samping (keduanya dari dialog Pull).
-                        double latLo = latMinFt + sideClrFt + effRFt;
-                        double latHi = latMaxFt - sideClrFt - effRFt;
-                        lat = latHi > latLo
-                            ? Math.Clamp(lat, latLo, latHi)
-                            : (latLo + latHi) / 2.0;
+                        latArr[slot] = lat;
+                        // Vertikal cukup dijepit per kabel: jarak dasar sudah
+                        // seragam lewat bottomClrFt, jadi formasi tidak rusak.
                         double vLo = floorVFt + bottomClrFt + effRFt;
                         double vHi = Math.Max(vLo, halfHFt - effRFt);
-                        vert = Math.Clamp(vert, vLo, vHi);
+                        vertArr[slot] = Math.Clamp(vert, vLo, vHi);
+                    }
+
+                    // Geser seluruh susunan agar badan conduit terluar tetap
+                    // di dalam jarak aman samping — formasi antar kabel utuh.
+                    double loBound = latMinFt + sideClrFt;
+                    double hiBound = latMaxFt - sideClrFt;
+                    double gMin = double.MaxValue, gMax = double.MinValue;
+                    for (int i = 0; i < slots.Count; i++)
+                    {
+                        double r = (effOdArr[i] / 2.0) * MmToFt;
+                        gMin = Math.Min(gMin, latArr[i] - r);
+                        gMax = Math.Max(gMax, latArr[i] + r);
+                    }
+                    double shift;
+                    if (hiBound - loBound >= gMax - gMin)
+                    {
+                        shift = gMin < loBound ? loBound - gMin
+                              : gMax > hiBound ? hiBound - gMax : 0;
+                    }
+                    else
+                    {
+                        // Susunan lebih lebar dari ruang tersisa: pertahankan
+                        // formasi dan letakkan di tengah — lebih baik melanggar
+                        // jarak aman daripada kabel saling menimpa.
+                        shift = (loBound + hiBound) / 2.0 - (gMin + gMax) / 2.0;
+                    }
+                    for (int i = 0; i < slots.Count; i++) latArr[i] += shift;
+
+                    int created = 0, elbows = 0, bends = 0;
+                    for (int slot = 0; slot < slots.Count; slot++)
+                    {
+                        CableInfo cable = slots[slot].Cable;
+                        double lat = latArr[slot];
+                        double vert = vertArr[slot];
+                        double effOdMm = effOdArr[slot];
 
                         string tag = TagPrefix + route.Key + "|" + cable.Nama;
 

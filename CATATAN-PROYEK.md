@@ -150,6 +150,17 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 - Conduit + elbow hasil Pull dibuat dengan tipe terpilih dan dipindahkan ke
   workset terpilih (parameter ELEM_PARTITION_PARAM).
 
+**Ronde 10 (18 Jul): jarak samping besar tidak merusak formasi kabel lagi**
+- Temuan uji: jarak arm samping 50 mm aman, tapi 100 mm membuat trefoil
+  berantakan — kabel pinggir tertabrak ke tengah sementara kabel tengah diam
+  (jepitan jarak samping diterapkan PER conduit). Fix: posisi semua slot
+  dihitung dulu, lalu SELURUH susunan digeser serempak agar badan conduit
+  terluar masuk batas jarak aman — jarak antar kabel (formasi trefoil/flat)
+  tidak berubah. Bila susunan lebih lebar dari ruang tersisa, formasi
+  dipertahankan dan diletakkan di tengah (melanggar jarak aman lebih baik
+  daripada kabel saling menimpa). Jepit vertikal tetap per kabel karena
+  jarak dasar sudah seragam.
+
 **Belum diuji (kerjaan berikutnya):**
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari

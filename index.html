@@ -306,31 +306,31 @@
           <input type="hidden" id="simProjName">
 
           <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div>
+            <div class="flex flex-col">
               <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-category">Kategori Struktur Tray</label>
-              <select id="simTrayType" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
+              <select id="simTrayType" onchange="runCalculation()" class="mt-auto w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
                 <option value="Perforated" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Perforated Tray</option>
                 <option value="Unperforated" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Unperforated Tray</option>
                 <option value="Vertical" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Vertical Cable Tray</option>
                 <option value="Ladder" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Ladder Cable Tray</option>
               </select>
             </div>
-            <div>
+            <div class="flex flex-col">
               <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-dim">Dimensi Tray (Lebar x Tinggi)</label>
-              <select id="simTrayTemplate" onchange="applyTrayTemplateSelect()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100"></select>
+              <select id="simTrayTemplate" onchange="applyTrayTemplateSelect()" class="mt-auto w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100"></select>
             </div>
-            <div>
+            <div class="flex flex-col">
               <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-spare">Spare Space Factor</label>
-              <select id="simSpareSpace" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
+              <select id="simSpareSpace" onchange="runCalculation()" class="mt-auto w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
                 <option value="0" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">0% (Kapasitas Maksimal)</option>
                 <option value="10" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">10% (Rekomendasi Ringan)</option>
                 <option value="20" selected class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">20% (Standar Industri)</option>
                 <option value="30" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">30% (Ekspansi Masa Depan)</option>
               </select>
             </div>
-            <div>
+            <div class="flex flex-col">
               <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-side-margin">Jarak Kabel ke Dinding (mm)</label>
-              <input type="number" id="simSideMargin" value="0" min="0" step="1" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
+              <input type="number" id="simSideMargin" value="0" min="0" step="1" onchange="runCalculation()" class="mt-auto w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
             </div>
           </div>
 

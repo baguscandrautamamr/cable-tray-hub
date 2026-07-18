@@ -1,5 +1,7 @@
 using Autodesk.Revit.UI;
+using System.IO;
 using System.Reflection;
+using System.Windows.Media.Imaging;
 
 namespace CableTrayHub.Revit
 {
@@ -38,6 +40,11 @@ namespace CableTrayHub.Revit
                           "jumlah conduit, dan total panjangnya."
             };
 
+            pullData.LargeImage = LoadIcon("pull32.png");
+            pullData.Image = LoadIcon("pull16.png");
+            pushData.LargeImage = LoadIcon("push32.png");
+            pushData.Image = LoadIcon("push16.png");
+
             panel.AddItem(pullData);
             panel.AddItem(pushData);
             return Result.Succeeded;
@@ -46,6 +53,33 @@ namespace CableTrayHub.Revit
         public Result OnShutdown(UIControlledApplication application)
         {
             return Result.Succeeded;
+        }
+
+        /// <summary>
+        /// Muat ikon PNG yang tertanam sebagai EmbeddedResource di DLL.
+        /// null bila tidak ditemukan (tombol tampil tanpa ikon, tidak fatal).
+        /// </summary>
+        private static BitmapImage LoadIcon(string fileName)
+        {
+            try
+            {
+                Assembly asm = Assembly.GetExecutingAssembly();
+                using Stream s = asm.GetManifestResourceStream(
+                    "CableTrayHub.Revit.Resources." + fileName);
+                if (s == null) return null;
+
+                var img = new BitmapImage();
+                img.BeginInit();
+                img.CacheOption = BitmapCacheOption.OnLoad;
+                img.StreamSource = s;
+                img.EndInit();
+                img.Freeze();
+                return img;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

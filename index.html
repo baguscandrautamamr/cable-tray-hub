@@ -7,6 +7,8 @@
 
   <!-- PWA Meta Tags -->
   <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <meta name="theme-color" content="#f97316">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -72,6 +74,20 @@
     .glass-effect {
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* Mobile: cegah halaman melebar & scroll ke kanan. Konten lebar
+       (tabel, kanvas) menggulir di dalam wadahnya sendiri. */
+    html, body {
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+    img, canvas, video {
+      max-width: 100%;
+      height: auto;
+    }
+    table {
+      max-width: 100%;
     }
 
     /* Print Layout Khusus (Engineering Report Layout A4 — 1 halaman) */

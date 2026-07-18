@@ -120,6 +120,16 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
   yang dulu hard-coded. Clamp posisi tetap memakai OD conduit efektif (min
   21 mm) sehingga badan conduit — bukan hanya sumbunya — yang diberi jarak.
 
+**Ronde 7 (18 Jul): PWA installable + ikon add-in**
+- Manifest kini memakai ikon PNG asli (`/icons/icon-192/512.png` + varian
+  maskable) — sebelumnya SVG data-URI ber-emoji yang DITOLAK Chrome Android
+  sebagai syarat install. Tambah apple-touch-icon & favicon. sw cache v7
+  (ikon ikut di-precache).
+- Mobile: `html,body{overflow-x:hidden}` + `img,canvas,table{max-width:100%}`
+  — halaman tidak bisa scroll ke kanan lagi.
+- Add-in Revit: tombol Pull/Push kini ber-ikon (PNG 32/16 tertanam sebagai
+  EmbeddedResource di DLL, dimuat via BitmapImage; csproj UseWPF=true).
+
 **Belum diuji (kerjaan berikutnya):**
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari

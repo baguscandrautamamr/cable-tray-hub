@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF diperlukan untuk BitmapImage (ikon tombol ribbon) -->
+    <UseWPF>true</UseWPF>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
@@ -16,6 +18,11 @@
     <!-- Referensi Revit API 2025 via NuGet (tidak perlu Revit terinstall untuk build) -->
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.*" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ikon tombol ribbon, ikut tertanam di dalam DLL -->
+    <EmbeddedResource Include="Resources\**\*.png" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-const CACHE = 'cable-tray-hub-v6';
+const CACHE = 'cable-tray-hub-v7';
 const ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,11 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(['/', '/index.html'])).catch(() => {})
+    caches.open(CACHE).then(cache => cache.addAll([
+      '/', '/index.html', '/manifest.json',
+      '/icons/icon-192.png', '/icons/icon-512.png',
+      '/icons/icon-maskable-192.png', '/icons/icon-maskable-512.png'
+    ])).catch(() => {})
   );
   self.skipWaiting();
 });

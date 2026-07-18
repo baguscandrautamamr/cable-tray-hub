@@ -36,8 +36,7 @@ namespace CableTrayHub.Revit
         // mengikutinya; di bawah ini dianggap sambungan siku biasa.
         private const double MinBendRadiusFt = 50 * MmToFt;
         // Jarak aman conduit terhadap dasar/arm tray diatur user lewat dialog
-        // Pull (tersimpan di PluginConfig). Default dasar 25.4 mm (setebal
-        // plat dasar tray), default samping 10 mm.
+        // Pull (tersimpan di PluginConfig; default 10 mm keduanya).
         // OD conduit terkecil yang umum tersedia; kabel kecil (mis. De 3.1 mm)
         // tetap digambar Revit sebagai conduit sebesar ini, jadi jarak ke
         // dinding tray dihitung dari OD efektif, bukan diameter kabel.
@@ -218,20 +217,19 @@ namespace CableTrayHub.Revit
                     if (revitWmm <= 0) revitWmm = trayWmm;
                     if (revitHmm <= 0) revitHmm = trayHmm;
 
-                    // Referensi vertikal = BASE BAWAH tray (deteksi lantai dari
-                    // geometri terbukti tidak andal antar family). Kabel
-                    // diangkat sebesar jarak aman dasar dari dialog Pull
-                    // (default 25.4 mm, setebal plat dasar). Sisi dalam rail
-                    // kiri/kanan tetap diukur dari geometri solid.
+                    // INTERIOR NYATA tray dari geometri solid: puncak plat
+                    // dasar (kabel duduk DI ATASNYA, bukan di dasar luar) dan
+                    // sisi dalam rail kiri/kanan. Tebal plat/rail (mis. 25.4mm)
+                    // tidak ter-ekspos sebagai parameter, jadi diukur langsung.
                     double halfWFt = revitWmm / 2.0 * MmToFt;
                     double halfHFt = revitHmm / 2.0 * MmToFt;
-                    double floorVFt = -halfHFt;
-                    double latMinFt = -halfWFt, latMaxFt = halfWFt;
+                    double floorVFt = -halfHFt, latMinFt = -halfWFt, latMaxFt = halfWFt;
                     foreach (var tray in plan.Trays)
                     {
-                        if (MeasureSideRails(tray, halfWFt, halfHFt,
-                                out double lmin, out double lmax))
+                        if (MeasureInterior(tray, halfWFt, halfHFt,
+                                out double fl, out double lmin, out double lmax))
                         {
+                            floorVFt = Math.Max(floorVFt, fl);
                             latMinFt = Math.Max(latMinFt, lmin);
                             latMaxFt = Math.Min(latMaxFt, lmax);
                         }
@@ -263,11 +261,11 @@ namespace CableTrayHub.Revit
                         double effRFt = (effOdMm / 2.0) * MmToFt;
 
                         // Offset penampang relatif sumbu tray. Lateral: dari
-                        // tengah lebar. Vertikal: y website diukur dari dasar
-                        // pakai tray -> dipetakan dari BASE BAWAH tray plus
-                        // jarak aman dasar dari dialog (default 25.4 mm),
-                        // sehingga kabel duduk di atas plat dasar dan tidak
-                        // menabrak penampang tray.
+                        // tengah lebar. Vertikal: y website diukur dari DASAR
+                        // PAKAI tray -> dipetakan mulai puncak plat dasar
+                        // interior (floorVFt) DITAMBAH jarak aman dasar yang
+                        // di-set user, sehingga seluruh susunan terangkat dan
+                        // tidak menyentuh plat.
                         double lat, vert;
                         if (pos != null)
                         {
@@ -848,28 +846,37 @@ namespace CableTrayHub.Revit
         }
 
         /// <summary>
-        /// Mengukur sisi DALAM rail kiri/kanan tray dari geometri solidnya
-        /// (tebal rail tidak ter-ekspos sebagai parameter). Probe garis
-        /// horizontal setinggi sumbu dipotongkan dengan solid di 3 stasiun
-        /// sepanjang sumbu; hanya struktur yang seluruhnya di satu sisi sumbu
-        /// yang dihitung rail. Nilai relatif sumbu tray (ft). false bila
-        /// geometri tak terbaca / segmen vertikal (pemanggil memakai dimensi
-        /// luar sebagai fallback).
+        /// Mengukur ruang interior tray dari geometri solidnya, karena tebal
+        /// plat dasar / rail samping (mis. 25.4 mm) TIDAK ter-ekspos sebagai
+        /// parameter. Probe garis dipotongkan dengan solid di 3 stasiun
+        /// sepanjang sumbu:
+        ///  - probe vertikal  -> puncak struktur dasar (plat/anak tangga) =
+        ///    floorV (kabel harus duduk DI ATASNYA);
+        ///  - probe horizontal (di ketinggian sumbu) -> sisi DALAM rail kiri
+        ///    dan kanan (latMin/latMax).
+        /// Semua nilai relatif sumbu tray (ft). false bila geometri tak
+        /// terbaca (pemanggil memakai dimensi luar sebagai fallback).
         /// </summary>
-        private static bool MeasureSideRails(CableTray tray, double halfWFt, double halfHFt,
-            out double latMin, out double latMax)
+        private static bool MeasureInterior(CableTray tray, double halfWFt, double halfHFt,
+            out double floorV, out double latMin, out double latMax)
         {
-            latMin = -halfWFt; latMax = halfWFt;
+            floorV = -halfHFt; latMin = -halfWFt; latMax = halfWFt;
 
             if (tray.Location is not LocationCurve lc || lc.Curve is not Line line)
                 return false;
-            // Segmen vertikal/riser dilewati: arah penampangnya ambigu.
+            // Segmen vertikal/riser dilewati: arah "atas penampang"-nya ambigu
+            // sehingga dinding bisa terbaca sebagai lantai dan MENGANGKAT semua
+            // kabel (gejala: conduit melayang jauh di atas plat dasar).
             if (Math.Abs(line.Direction.Z) > 0.7) return false;
             var solids = CollectSolids(tray);
             if (solids.Count == 0) return false;
 
             XYZ d = line.Direction;
             XYZ n = PerpendicularOf(d);
+            XYZ v = d.CrossProduct(n);
+            if (v.GetLength() < 1e-6) v = XYZ.BasisZ;
+            v = v.Normalize();
+            if (v.Z < 0) v = v.Negate();
 
             bool found = false;
             var opts = new SolidCurveIntersectionOptions();
@@ -877,22 +884,44 @@ namespace CableTrayHub.Revit
             foreach (double t in new[] { 0.3, 0.5, 0.7 })
             {
                 XYZ p = line.Evaluate(t, true);
+                Line probeV = Line.CreateBound(p - v * halfHFt * 2, p + v * halfHFt * 2);
                 Line probeH = Line.CreateBound(p - n * halfWFt * 2, p + n * halfWFt * 2);
 
                 foreach (Solid sol in solids)
                 {
                     SolidCurveIntersection ix = null;
-                    try { ix = sol.IntersectWithCurve(probeH, opts); } catch { }
-                    if (ix == null) continue;
-                    for (int k = 0; k < ix.SegmentCount; k++)
+                    try { ix = sol.IntersectWithCurve(probeV, opts); } catch { }
+                    if (ix != null)
                     {
-                        Curve seg = ix.GetCurveSegment(k);
-                        double b0 = (seg.GetEndPoint(0) - p).DotProduct(n);
-                        double b1 = (seg.GetEndPoint(1) - p).DotProduct(n);
-                        // Rail samping = struktur yang seluruhnya di satu
-                        // sisi sumbu; yang melintasi sumbu diabaikan.
-                        if (b0 < 0 && b1 < 0) { latMin = Math.Max(latMin, Math.Max(b0, b1)); found = true; }
-                        else if (b0 > 0 && b1 > 0) { latMax = Math.Min(latMax, Math.Min(b0, b1)); found = true; }
+                        for (int k = 0; k < ix.SegmentCount; k++)
+                        {
+                            Curve seg = ix.GetCurveSegment(k);
+                            double a0 = (seg.GetEndPoint(0) - p).DotProduct(v);
+                            double a1 = (seg.GetEndPoint(1) - p).DotProduct(v);
+                            // Lantai = struktur yang SELURUHNYA di bawah sumbu
+                            // (plat dasar / rung). Dinding yang melintasi sumbu
+                            // bukan lantai — abaikan.
+                            if (a0 < 0 && a1 < 0)
+                            {
+                                floorV = Math.Max(floorV, Math.Max(a0, a1));
+                                found = true;
+                            }
+                        }
+                    }
+
+                    try { ix = sol.IntersectWithCurve(probeH, opts); } catch { }
+                    if (ix != null)
+                    {
+                        for (int k = 0; k < ix.SegmentCount; k++)
+                        {
+                            Curve seg = ix.GetCurveSegment(k);
+                            double b0 = (seg.GetEndPoint(0) - p).DotProduct(n);
+                            double b1 = (seg.GetEndPoint(1) - p).DotProduct(n);
+                            // Rail samping = struktur yang seluruhnya di satu
+                            // sisi sumbu; yang melintasi sumbu diabaikan.
+                            if (b0 < 0 && b1 < 0) { latMin = Math.Max(latMin, Math.Max(b0, b1)); found = true; }
+                            else if (b0 > 0 && b1 > 0) { latMax = Math.Min(latMax, Math.Min(b0, b1)); found = true; }
+                        }
                     }
                 }
             }

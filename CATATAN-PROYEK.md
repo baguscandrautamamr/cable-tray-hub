@@ -111,19 +111,14 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
    SELURUHNYA di bawah sumbu dihitung lantai (yang melintasi sumbu diabaikan);
    rail samping juga hanya yang seluruhnya di satu sisi.
 
-**Ronde 6 (17 Jul, gabungan 2 sesi): jarak aman conduit dari dialog Pull,
-referensi = base bawah tray**
+**Ronde 6 (17 Jul): jarak aman conduit bisa diatur dari dialog Pull**
 - Temuan uji: conduit masih menabrak penampang tray (baris kabel menyentuh
-  plat dasar). Deteksi lantai dari geometri (ronde 3/5) terbukti tidak andal
-  antar family — DICABUT; probe geometri hanya tersisa untuk sisi dalam rail
-  kiri/kanan (`MeasureSideRails`).
-- Referensi vertikal kini BASE BAWAH tray + jarak aman dasar. Dialog Pull
-  punya dua input "Jarak aman conduit (mm)" — **ke dasar tray** (default
-  **25.4** = tebal plat, permintaan lapangan) dan **ke arm samping** (default
-  10), diingat di config `%APPDATA%\CableTrayHub\config.json`. Catatan: config
-  yang sudah tersimpan dengan nilai lama tidak ikut berubah — atur dari dialog.
-- Clamp posisi tetap memakai OD conduit efektif (min 21 mm) sehingga badan
-  conduit — bukan hanya sumbunya — yang diberi jarak.
+  plat dasar). Fix: dialog Pull kini punya dua input "Jarak aman conduit (mm)"
+  — **ke dasar tray** dan **ke arm samping** (default 10/10, diingat di
+  config `%APPDATA%\CableTrayHub\config.json`). Jarak dasar mengangkat seluruh
+  susunan kabel dari puncak plat; jarak samping menggantikan konstanta 10 mm
+  yang dulu hard-coded. Clamp posisi tetap memakai OD conduit efektif (min
+  21 mm) sehingga badan conduit — bukan hanya sumbunya — yang diberi jarak.
 
 **Belum diuji (kerjaan berikutnya):**
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak

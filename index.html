@@ -305,7 +305,7 @@
           <input type="hidden" id="simPanelTo">
           <input type="hidden" id="simProjName">
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div>
               <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-category">Kategori Struktur Tray</label>
               <select id="simTrayType" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
@@ -327,6 +327,10 @@
                 <option value="20" selected class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">20% (Standar Industri)</option>
                 <option value="30" class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">30% (Ekspansi Masa Depan)</option>
               </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" data-i18n="sim-side-margin">Jarak Kabel ke Dinding (mm)</label>
+              <input type="number" id="simSideMargin" value="0" min="0" step="1" onchange="runCalculation()" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-slate-100">
             </div>
           </div>
 
@@ -707,6 +711,7 @@
         "sim-category": "Kategori Struktur Tray",
         "sim-dim": "Dimensi Tray (Lebar x Tinggi)",
         "sim-spare": "Spare Space Factor",
+        "sim-side-margin": "Jarak Kabel ke Dinding (mm)",
         "sim-layout": "Metode Konfigurasi Kabel",
         "sim-cables-title": "Daftar Bundle Kabel Elektrikal",
         "btn-add-cable": "Tambah Kabel",
@@ -772,6 +777,7 @@
         "sim-category": "Tray Structure Category",
         "sim-dim": "Tray Dimension (Width x Height)",
         "sim-spare": "Spare Space Factor",
+        "sim-side-margin": "Cable-to-Wall Gap (mm)",
         "sim-layout": "Cable Configuration Method",
         "sim-cables-title": "Electrical Cable Bundle List",
         "btn-add-cable": "Add Cable",
@@ -1317,9 +1323,14 @@
     let activeDragIndex = -1;
     let currentLayoutMethod = '';
     let currentTrayWidth = 0;
-    // Jarak aman kabel terhadap dinding samping tray (mm) — mencegah conduit
-    // hasil Pull di Revit menabrak pinggir arm/rail cable tray.
-    const TRAY_SIDE_MARGIN_MM = 10;
+    let currentSideMargin = -1;
+    // Jarak aman kabel terhadap dinding samping tray (mm) — diatur user dari
+    // input "Jarak Kabel ke Dinding"; 0 = kabel boleh menempel rail tray.
+    function getSideMarginMm() {
+      const el = document.getElementById('simSideMargin');
+      const v = el ? parseFloat(el.value) : 0;
+      return isNaN(v) || v < 0 ? 0 : v;
+    }
 
     // Inisialisasi awal sistem
     window.onload = function() {
@@ -1679,10 +1690,11 @@ function showToast(message, type = "success") {
       statusBadge.innerText = statusSpace;
 
       // Sinkronisasi Drag & Drop State Canvas (gunakan targetHeight untuk membatasi pergerakan y!)
-      if (currentLayoutMethod !== method || currentTrayWidth !== targetWidth || cableInstances.length !== targetCablesList.length) {
+      if (currentLayoutMethod !== method || currentTrayWidth !== targetWidth || currentSideMargin !== getSideMarginMm() || cableInstances.length !== targetCablesList.length) {
         generateDefaultPositions(targetCablesList, method, targetWidth, targetHeight);
         currentLayoutMethod = method;
         currentTrayWidth = targetWidth;
+        currentSideMargin = getSideMarginMm();
       } else {
         drawTrayFromState();
       }
@@ -1698,8 +1710,8 @@ function showToast(message, type = "success") {
       const scaleX = (canvas.width - 40) / width;
       const trayX = 20;
       const trayY = 30;
-      // Mulai dari margin aman dinding kiri (bukan menempel rail tray)
-      let currentX = trayX + (TRAY_SIDE_MARGIN_MM * scaleX);
+      // Mulai dari jarak dinding kiri yang diatur user (0 = menempel rail tray)
+      let currentX = trayX + (getSideMarginMm() * scaleX);
 
       const maxTrayHeightPx = 80;
       const trayHeightPx = Math.min(maxTrayHeightPx, height * scaleX);
@@ -1837,8 +1849,8 @@ function showToast(message, type = "success") {
       
       const ci = cableInstances[activeDragIndex];
 
-      // Batas geser: sisakan margin aman dari dinding samping tray
-      const sideMarginPx = TRAY_SIDE_MARGIN_MM * scaleX;
+      // Batas geser: sisakan jarak dinding samping sesuai input user
+      const sideMarginPx = getSideMarginMm() * scaleX;
       if (dragX < trayX + sideMarginPx + ci.radius) dragX = trayX + sideMarginPx + ci.radius;
       if (dragX > trayX + trayWidthPx - sideMarginPx - ci.radius) dragX = trayX + trayWidthPx - sideMarginPx - ci.radius;
       if (dragY < trayY + ci.radius) dragY = trayY + ci.radius;
@@ -2116,6 +2128,8 @@ function showToast(message, type = "success") {
         }
         const spareVal = parseFloat(det.spare || h.persenSpare || '0');
         if (!isNaN(spareVal)) document.getElementById('simSpareSpace').value = spareVal;
+        const smEl = document.getElementById('simSideMargin');
+        if (smEl) smEl.value = (typeof det.sideMargin === 'number' && det.sideMargin >= 0) ? det.sideMargin : 0;
         const method = det.metode || h.metode;
         if (method) {
           const radio = document.querySelector('input[name="layoutMethod"][value="' + method + '"]');
@@ -2298,8 +2312,9 @@ function showToast(message, type = "success") {
         const rMm = (ci.diameter || diaMm) / 2;
         let xMm = (ci.x - cvTrayX) / cvScaleX;
         let yMm = (cvBaseLineY - ci.y) / cvScaleX;
-        // Jepit dengan margin aman dinding samping (anti clash arm tray)
-        xMm = Math.max(TRAY_SIDE_MARGIN_MM + rMm, Math.min(width - TRAY_SIDE_MARGIN_MM - rMm, xMm));
+        // Jepit dengan jarak dinding samping sesuai input user
+        const sideMm = getSideMarginMm();
+        xMm = Math.max(sideMm + rMm, Math.min(width - sideMm - rMm, xMm));
         yMm = Math.max(rMm, Math.min(height - rMm, yMm));
         return { x: Math.round(xMm * 10) / 10, y: Math.round(yMm * 10) / 10 };
       }
@@ -2355,6 +2370,7 @@ function showToast(message, type = "success") {
           tray: { jenis: trayType, lebar: width, tinggi: height, maxLoad: maxLoad },
           metode: method,
           spare: spare + '%',
+          sideMargin: getSideMarginMm(),
           routes: routesDetail
         }
       };

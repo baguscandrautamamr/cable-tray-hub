@@ -130,6 +130,17 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 - Add-in Revit: tombol Pull/Push kini ber-ikon (PNG 32/16 tertanam sebagai
   EmbeddedResource di DLL, dimuat via BitmapImage; csproj UseWPF=true).
 
+**Ronde 8 (18 Jul): jarak kabel ke dinding di web bisa diatur (default 0)**
+- Temuan: kabel di kanvas penampang tidak bisa menempel pinggir tray — margin
+  10 mm dari ronde 2 ternyata hard-coded di web. Fix: konstanta diganti input
+  "Jarak Kabel ke Dinding (mm)" di form simulasi (samping Spare Space Factor),
+  default **0 = kabel boleh menempel rail**. Berlaku untuk posisi default,
+  batas drag, dan koordinat mm yang disimpan; nilainya ikut tersimpan di
+  `detail.sideMargin` dan direstore saat Edit/Buka riwayat (riwayat lama tanpa
+  field ini dianggap 0). sw cache naik ke v8.
+- Catatan: jarak aman di REVIT tetap dari dialog Pull (ronde 6). Kalau mau
+  conduit di Revit juga menempel arm, set "jarak ke arm samping" = 0 di dialog.
+
 **Belum diuji (kerjaan berikutnya):**
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari

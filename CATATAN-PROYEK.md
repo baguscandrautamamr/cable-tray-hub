@@ -111,6 +111,13 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
    SELURUHNYA di bawah sumbu dihitung lantai (yang melintasi sumbu diabaikan);
    rail samping juga hanya yang seluruhnya di satu sisi.
 
+**Ronde 6 (17 Jul): jarak dasar jadi OFFSET TETAP 25.4 mm**
+Deteksi lantai dari geometri (ronde 3/5) terbukti tidak andal antar family —
+conduit masih menabrak plat dasar. Sekarang bawah conduit selalu diangkat
+25.4 mm (konstanta `BottomClearanceMm`) dari base bawah tray Revit; deteksi
+geometri hanya tersisa untuk sisi dalam rail kiri/kanan (`MeasureSideRails`).
+Kalau proyek lain platnya lebih tipis/tebal, ubah konstanta itu.
+
 **Belum diuji (kerjaan berikutnya):**
 1. Install build terbaru di mesin Revit (link unduh di atas) → uji Pull ulang:
    cek conduit tidak menabrak arm tray, Bend Radius conduit mengikuti Bend

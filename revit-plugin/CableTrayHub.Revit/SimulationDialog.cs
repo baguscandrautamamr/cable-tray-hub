@@ -40,7 +40,7 @@ namespace CableTrayHub.Revit
         {
             Text = "Cable Tray Hub — Pull Simulasi dari Website";
             Width = 600;
-            Height = 600;
+            Height = 632;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -92,11 +92,12 @@ namespace CableTrayHub.Revit
                 Value = (decimal)Math.Clamp(config.SideClearanceMm, 0, 500)
             };
 
-            // Tipe conduit yang dipakai menggambar + workset tujuan elemen baru.
+            // Tipe conduit yang dipakai menggambar + workset tujuan elemen baru
+            // — masing-masing satu baris penuh agar nama panjang tetap terbaca.
             var typeLabel = new Label { Text = "Tipe conduit:", Left = 15, Top = 436, Width = 82 };
             _typeCombo = new ComboBox
             {
-                Left = 100, Top = 432, Width = 205,
+                Left = 100, Top = 432, Width = 465,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             foreach (string t in conduitTypes) _typeCombo.Items.Add(t);
@@ -108,11 +109,11 @@ namespace CableTrayHub.Revit
                 _typeCombo.Enabled = false;
             }
 
-            var wsLabel = new Label { Text = "Workset:", Left = 320, Top = 436, Width = 58 };
+            var wsLabel = new Label { Text = "Workset:", Left = 15, Top = 470, Width = 82 };
             _hasWorksets = worksets != null && worksets.Count > 0;
             _wsCombo = new ComboBox
             {
-                Left = 380, Top = 432, Width = 185,
+                Left = 100, Top = 466, Width = 465,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             if (_hasWorksets)
@@ -130,12 +131,12 @@ namespace CableTrayHub.Revit
             _okButton = new Button
             {
                 Text = "Lanjut: Sinkronkan ke Model ➜",
-                Left = 255, Top = 478, Width = 210, Height = 32,
+                Left = 255, Top = 510, Width = 210, Height = 32,
                 Enabled = false, DialogResult = DialogResult.OK
             };
             _cancelButton = new Button
             {
-                Text = "Batal", Left = 475, Top = 478, Width = 90, Height = 32,
+                Text = "Batal", Left = 475, Top = 510, Width = 90, Height = 32,
                 DialogResult = DialogResult.Cancel
             };
 

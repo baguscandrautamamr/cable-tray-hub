@@ -141,6 +141,15 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 - Catatan: jarak aman di REVIT tetap dari dialog Pull (ronde 6). Kalau mau
   conduit di Revit juga menempel arm, set "jarak ke arm samping" = 0 di dialog.
 
+**Ronde 9 (18 Jul): dialog Pull — pilih Tipe Conduit & Workset**
+- Baris baru di dialog Pull (di bawah jarak aman): dropdown **Tipe conduit**
+  (semua ConduitType project, label "Family: Type"; default = tipe yang punya
+  aturan Elbow di Routing Preferences) dan **Workset** (user workset; default =
+  workset aktif; nonaktif bila model tidak workshared). Pilihan diingat di
+  config `%APPDATA%\CableTrayHub\config.json`.
+- Conduit + elbow hasil Pull dibuat dengan tipe terpilih dan dipindahkan ke
+  workset terpilih (parameter ELEM_PARTITION_PARAM).
+
 **Belum diuji (kerjaan berikutnya):**
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari

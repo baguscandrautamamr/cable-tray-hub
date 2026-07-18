@@ -18,18 +18,29 @@ namespace CableTrayHub.Revit
         private readonly Label _statusLabel;
         private readonly NumericUpDown _bottomClrBox;
         private readonly NumericUpDown _sideClrBox;
+        private readonly ComboBox _typeCombo;
+        private readonly ComboBox _wsCombo;
+        private readonly bool _hasWorksets;
 
         public Simulation Result { get; private set; }
         public string ApiUrl => _urlBox.Text.Trim();
         public string SimulationId => _idBox.Text.Trim();
         public double BottomClearanceMm => (double)_bottomClrBox.Value;
         public double SideClearanceMm => (double)_sideClrBox.Value;
+        public string ConduitTypeName => _typeCombo.SelectedItem?.ToString() ?? "";
+        public string WorksetName => _hasWorksets ? (_wsCombo.SelectedItem?.ToString() ?? "") : "";
 
-        public SimulationDialog(PluginConfig config)
+        /// <param name="conduitTypes">Nama semua ConduitType di project.</param>
+        /// <param name="defaultConduitType">Tipe rekomendasi (punya aturan elbow).</param>
+        /// <param name="worksets">Nama user workset; kosong bila model tidak workshared.</param>
+        /// <param name="defaultWorkset">Workset aktif saat ini.</param>
+        public SimulationDialog(PluginConfig config,
+            IList<string> conduitTypes, string defaultConduitType,
+            IList<string> worksets, string defaultWorkset)
         {
             Text = "Cable Tray Hub — Pull Simulasi dari Website";
             Width = 600;
-            Height = 560;
+            Height = 600;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -81,15 +92,50 @@ namespace CableTrayHub.Revit
                 Value = (decimal)Math.Clamp(config.SideClearanceMm, 0, 500)
             };
 
+            // Tipe conduit yang dipakai menggambar + workset tujuan elemen baru.
+            var typeLabel = new Label { Text = "Tipe conduit:", Left = 15, Top = 436, Width = 82 };
+            _typeCombo = new ComboBox
+            {
+                Left = 100, Top = 432, Width = 205,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            foreach (string t in conduitTypes) _typeCombo.Items.Add(t);
+            SelectPreferred(_typeCombo, config.ConduitTypeName, defaultConduitType);
+            if (_typeCombo.Items.Count == 0)
+            {
+                _typeCombo.Items.Add("(tidak ada Conduit Type di project)");
+                _typeCombo.SelectedIndex = 0;
+                _typeCombo.Enabled = false;
+            }
+
+            var wsLabel = new Label { Text = "Workset:", Left = 320, Top = 436, Width = 58 };
+            _hasWorksets = worksets != null && worksets.Count > 0;
+            _wsCombo = new ComboBox
+            {
+                Left = 380, Top = 432, Width = 185,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            if (_hasWorksets)
+            {
+                foreach (string w in worksets) _wsCombo.Items.Add(w);
+                SelectPreferred(_wsCombo, config.WorksetName, defaultWorkset);
+            }
+            else
+            {
+                _wsCombo.Items.Add("(model tanpa workset)");
+                _wsCombo.SelectedIndex = 0;
+                _wsCombo.Enabled = false;
+            }
+
             _okButton = new Button
             {
                 Text = "Lanjut: Sinkronkan ke Model ➜",
-                Left = 255, Top = 440, Width = 210, Height = 32,
+                Left = 255, Top = 478, Width = 210, Height = 32,
                 Enabled = false, DialogResult = DialogResult.OK
             };
             _cancelButton = new Button
             {
-                Text = "Batal", Left = 475, Top = 440, Width = 90, Height = 32,
+                Text = "Batal", Left = 475, Top = 478, Width = 90, Height = 32,
                 DialogResult = DialogResult.Cancel
             };
 
@@ -98,11 +144,27 @@ namespace CableTrayHub.Revit
                 urlLabel, _urlBox, idLabel, _idBox, _fetchButton,
                 _statusLabel, _routeList,
                 clrLabel, bottomClrLabel, _bottomClrBox, sideClrLabel, _sideClrBox,
+                typeLabel, _typeCombo, wsLabel, _wsCombo,
                 _okButton, _cancelButton
             });
 
             AcceptButton = _okButton;
             CancelButton = _cancelButton;
+        }
+
+        /// <summary>
+        /// Pilih item combo: pilihan tersimpan di config bila masih ada di
+        /// project, kalau tidak pakai default, kalau tidak item pertama.
+        /// </summary>
+        private static void SelectPreferred(ComboBox combo, string saved, string fallback)
+        {
+            if (combo.Items.Count == 0) return;
+            if (!string.IsNullOrEmpty(saved) && combo.Items.Contains(saved))
+                combo.SelectedItem = saved;
+            else if (!string.IsNullOrEmpty(fallback) && combo.Items.Contains(fallback))
+                combo.SelectedItem = fallback;
+            else
+                combo.SelectedIndex = 0;
         }
 
         private void FetchData()

@@ -59,8 +59,34 @@ namespace CableTrayHub.Revit
 
             // ---------- 1. Dialog: ambil data simulasi dari website ----------
             var config = PluginConfig.Load();
+
+            // Daftar pilihan untuk dialog: semua ConduitType (rekomendasi =
+            // yang punya aturan elbow di Routing Preferences) + user workset.
+            var conduitTypes = new FilteredElementCollector(doc)
+                .OfClass(typeof(ConduitType)).Cast<ConduitType>()
+                .OrderBy(ct => ConduitTypeLabel(ct)).ToList();
+            string recommendedType = conduitTypes
+                .Where(HasElbowRule).Select(ConduitTypeLabel).FirstOrDefault()
+                ?? conduitTypes.Select(ConduitTypeLabel).FirstOrDefault();
+
+            var worksets = doc.IsWorkshared
+                ? new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+                    .OrderBy(w => w.Name).ToList()
+                : new List<Workset>();
+            string activeWorkset = null;
+            if (doc.IsWorkshared)
+            {
+                WorksetId active = doc.GetWorksetTable().GetActiveWorksetId();
+                activeWorkset = worksets
+                    .FirstOrDefault(w => w.Id.IntegerValue == active.IntegerValue)?.Name;
+            }
+
             Simulation sim;
-            using (var dialog = new SimulationDialog(config))
+            ConduitType conduitType;
+            WorksetId targetWorksetId;
+            using (var dialog = new SimulationDialog(config,
+                       conduitTypes.Select(ConduitTypeLabel).ToList(), recommendedType,
+                       worksets.Select(w => w.Name).ToList(), activeWorkset))
             {
                 if (dialog.ShowDialog() != DialogResult.OK || dialog.Result == null)
                     return Result.Cancelled;
@@ -70,7 +96,14 @@ namespace CableTrayHub.Revit
                 config.LastSimulationId = dialog.SimulationId;
                 config.BottomClearanceMm = dialog.BottomClearanceMm;
                 config.SideClearanceMm = dialog.SideClearanceMm;
+                config.ConduitTypeName = dialog.ConduitTypeName;
+                config.WorksetName = dialog.WorksetName;
                 config.Save();
+
+                conduitType = conduitTypes
+                    .FirstOrDefault(ct => ConduitTypeLabel(ct) == dialog.ConduitTypeName);
+                targetWorksetId = worksets
+                    .FirstOrDefault(w => w.Name == dialog.WorksetName)?.Id;
             }
 
             double sideClrFt = config.SideClearanceMm * MmToFt;
@@ -142,15 +175,17 @@ namespace CableTrayHub.Revit
                 return Result.Cancelled;
             }
 
-            // Pilih ConduitType yang punya aturan elbow di Routing Preferences —
-            // tipe "without fittings" membuat NewElbowFitting selalu gagal.
-            ConduitType conduitType = PickConduitType(doc, out bool typeHasElbow);
+            // Tipe conduit sesuai pilihan user di dialog; fallback ke tipe
+            // ber-aturan-elbow (tipe "without fittings" membuat NewElbowFitting
+            // selalu gagal).
+            conduitType ??= PickConduitType(doc, out _);
             if (conduitType == null)
             {
                 message = "Project ini tidak memiliki Conduit Type. " +
                           "Gunakan template Electrical atau load type conduit dahulu.";
                 return Result.Failed;
             }
+            bool typeHasElbow = HasElbowRule(conduitType);
 
             // ---------- 3. Transaction: hapus conduit lama + gambar ulang ----------
             var summary = new StringBuilder();
@@ -301,7 +336,7 @@ namespace CableTrayHub.Revit
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
-                                    pts[i], pts[i + 1], cable, tag);
+                                    pts[i], pts[i + 1], cable, tag, targetWorksetId);
                                 if (c != null) { runConduits.Add(c); created++; }
                             }
                         }
@@ -313,7 +348,7 @@ namespace CableTrayHub.Revit
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
                                     seg.GetEndPoint(0) + off,
                                     seg.GetEndPoint(1) + off,
-                                    cable, tag);
+                                    cable, tag, targetWorksetId);
                                 if (c != null) { runConduits.Add(c); created++; }
                             }
                         }
@@ -329,7 +364,7 @@ namespace CableTrayHub.Revit
                             bends++;
                             double radius = radiiAligned ? bendRadii[i] : 0;
                             if (TryCreateElbow(doc, runConduits[i], runConduits[i + 1],
-                                    fittingTag, radius))
+                                    fittingTag, radius, targetWorksetId))
                                 elbows++;
                         }
                     }
@@ -448,8 +483,34 @@ namespace CableTrayHub.Revit
             catch { return false; }
         }
 
+        /// <summary>
+        /// Label tipe conduit di dialog: "Family: Type" agar tidak ambigu
+        /// (nama type bisa sama di family berbeda).
+        /// </summary>
+        private static string ConduitTypeLabel(ConduitType ct)
+        {
+            string fam = "";
+            try { fam = ct.FamilyName ?? ""; } catch { }
+            return string.IsNullOrEmpty(fam) ? ct.Name : fam + ": " + ct.Name;
+        }
+
+        /// <summary>
+        /// Pindahkan elemen ke workset tujuan (model workshared saja);
+        /// null = biarkan di workset aktif.
+        /// </summary>
+        private static void TrySetWorkset(Element e, WorksetId wsId)
+        {
+            if (wsId == null) return;
+            try
+            {
+                Parameter p = e.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM);
+                if (p != null && !p.IsReadOnly) p.Set(wsId.IntegerValue);
+            }
+            catch { /* gagal pindah workset bukan error fatal */ }
+        }
+
         private static Conduit CreateConduit(Document doc, ElementId typeId, ElementId levelId,
-            XYZ start, XYZ end, CableInfo cable, string tag)
+            XYZ start, XYZ end, CableInfo cable, string tag, WorksetId worksetId)
         {
             if (start.DistanceTo(end) < MinSegmentFt) return null;
 
@@ -479,6 +540,8 @@ namespace CableTrayHub.Revit
             }
             catch { /* opsional */ }
 
+            TrySetWorkset(conduit, worksetId);
+
             return conduit;
         }
 
@@ -487,7 +550,7 @@ namespace CableTrayHub.Revit
         /// 0 = pakai radius default family elbow.
         /// </param>
         private static bool TryCreateElbow(Document doc, Conduit a, Conduit b, string tag,
-            double bendRadiusFt)
+            double bendRadiusFt, WorksetId worksetId)
         {
             try
             {
@@ -501,6 +564,8 @@ namespace CableTrayHub.Revit
                     if (cmt != null && !cmt.IsReadOnly) cmt.Set(tag);
                 }
                 catch { }
+
+                TrySetWorkset(elbow, worksetId);
 
                 if (bendRadiusFt > MinBendRadiusFt) TrySetBendRadius(elbow, bendRadiusFt);
                 return true;

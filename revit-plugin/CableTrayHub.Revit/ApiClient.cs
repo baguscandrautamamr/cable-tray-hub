@@ -170,6 +170,9 @@ namespace CableTrayHub.Revit
         // Jarak aman conduit terhadap tray (mm) — bisa diatur dari dialog Pull.
         public double BottomClearanceMm { get; set; } = 10;
         public double SideClearanceMm { get; set; } = 10;
+        // Pilihan terakhir di dialog Pull (diingat antar sesi).
+        public string LastConduitType { get; set; } = ""; // "Family: Type"
+        public string LastWorkset { get; set; } = "";      // nama workset
 
         private static string ConfigPath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

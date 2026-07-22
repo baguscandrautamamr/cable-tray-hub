@@ -60,7 +60,9 @@ namespace CableTrayHub.Revit
             // ---------- 1. Dialog: ambil data simulasi dari website ----------
             var config = PluginConfig.Load();
             Simulation sim;
-            using (var dialog = new SimulationDialog(config))
+            ElementId chosenConduitTypeId = ElementId.InvalidElementId;
+            WorksetId chosenWorksetId = null;
+            using (var dialog = new SimulationDialog(config, doc))
             {
                 if (dialog.ShowDialog() != DialogResult.OK || dialog.Result == null)
                     return Result.Cancelled;
@@ -70,6 +72,10 @@ namespace CableTrayHub.Revit
                 config.LastSimulationId = dialog.SimulationId;
                 config.BottomClearanceMm = dialog.BottomClearanceMm;
                 config.SideClearanceMm = dialog.SideClearanceMm;
+                config.LastConduitType = dialog.SelectedConduitTypeName;
+                config.LastWorkset = dialog.SelectedWorksetName;
+                chosenConduitTypeId = dialog.SelectedConduitTypeId;
+                chosenWorksetId = dialog.SelectedWorksetId;
                 config.Save();
             }
 
@@ -142,14 +148,30 @@ namespace CableTrayHub.Revit
                 return Result.Cancelled;
             }
 
-            // Pilih ConduitType yang punya aturan elbow di Routing Preferences —
-            // tipe "without fittings" membuat NewElbowFitting selalu gagal.
-            ConduitType conduitType = PickConduitType(doc, out bool typeHasElbow);
+            // Tipe conduit dipilih user di dialog. Bila tak ada pilihan valid,
+            // fallback auto: tipe yang punya aturan Elbow di Routing Preferences
+            // (tipe "without fittings" membuat NewElbowFitting selalu gagal).
+            ConduitType conduitType = doc.GetElement(chosenConduitTypeId) as ConduitType;
+            bool typeHasElbow;
+            if (conduitType != null)
+                typeHasElbow = HasElbowRule(conduitType);
+            else
+                conduitType = PickConduitType(doc, out typeHasElbow);
             if (conduitType == null)
             {
                 message = "Project ini tidak memiliki Conduit Type. " +
                           "Gunakan template Electrical atau load type conduit dahulu.";
                 return Result.Failed;
+            }
+
+            // Workset pilihan user (bila model workshared) — set sebagai workset
+            // AKTIF sebelum transaction supaya semua conduit/elbow baru masuk ke
+            // situ; dikembalikan lagi setelah selesai.
+            WorksetId prevActiveWorksetId = null;
+            if (doc.IsWorkshared && chosenWorksetId != null)
+            {
+                prevActiveWorksetId = doc.GetWorksetTable().GetActiveWorksetId();
+                doc.GetWorksetTable().SetActiveWorksetId(chosenWorksetId);
             }
 
             // ---------- 3. Transaction: hapus conduit lama + gambar ulang ----------
@@ -200,8 +222,6 @@ namespace CableTrayHub.Revit
 
                     double trayWmm = sim.Detail?.Tray?.Lebar > 0 ? sim.Detail.Tray.Lebar : 300;
                     double trayHmm = sim.Detail?.Tray?.Tinggi > 0 ? sim.Detail.Tray.Tinggi : 100;
-                    double maxDeMm = slots.Max(s => s.Cable.Diameter);
-                    double spacingFt = (maxDeMm + 2) * MmToFt;
 
                     // Dimensi tray NYATA dari elemen Revit yang dipilih (bisa
                     // berbeda dari input website) — dipakai untuk menjepit
@@ -238,6 +258,22 @@ namespace CableTrayHub.Revit
                     ElementId levelId = plan.Trays[0].ReferenceLevel?.Id
                         ?? new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstElementId();
 
+                    // === Susun penampang sesuai METODE dari website + OD NYATA ===
+                    // 3 metode (Flat Touching / Flat Spaced (De) / Trefoil) di web
+                    // direproduksi di Revit. Jarak antar-conduit dihitung dari OD
+                    // LUAR NYATA (Revit menggambar conduit sebesar ukuran Conduit
+                    // Sizes, sering > diameter kabel) supaya TIDAK saling tumpuk.
+                    // Seluruh susunan duduk di atas jarak aman dasar (bottomClr) →
+                    // ubah "jarak ke dasar" mengangkat semua conduit seragam.
+                    string metode = string.IsNullOrEmpty(sim.Detail?.Metode)
+                        ? "Flat Touching" : sim.Detail.Metode;
+                    var odFtByDia = MeasureConduitOds(doc, conduitType.Id, levelId, slots);
+                    double[] slotLat = new double[slots.Count];
+                    double[] slotVert = new double[slots.Count];
+                    ArrangeCrossSection(slots, odFtByDia, metode,
+                        latMinFt + sideClrFt, latMaxFt - sideClrFt, floorVFt + bottomClrFt,
+                        slotLat, slotVert);
+
                     // Frame penampang tiap segmen: dihitung SEKALI untuk seluruh
                     // rantai dengan parallel transport (frame ikut berputar di
                     // belokan), sehingga susunan kabel kontinu — termasuk saat
@@ -253,42 +289,16 @@ namespace CableTrayHub.Revit
                     for (int slot = 0; slot < slots.Count; slot++)
                     {
                         CableInfo cable = slots[slot].Cable;
-                        PosXY pos = slots[slot].Pos;
 
-                        // Kabel kecil tetap digambar Revit sebagai conduit
-                        // ukuran terkecil — jarak aman dihitung dari OD efektif.
-                        double effOdMm = Math.Max(cable.Diameter, MinConduitOdMm);
-                        double effRFt = (effOdMm / 2.0) * MmToFt;
+                        // OD LUAR NYATA yang digambar Revit (dipakai untuk elbow
+                        // annulus; sudah jadi dasar jarak antar-conduit di atas).
+                        double effOdMm = odFtByDia[cable.Diameter] / MmToFt;
 
-                        // Offset penampang relatif sumbu tray. Lateral: dari
-                        // tengah lebar. Vertikal: y website diukur dari DASAR
-                        // PAKAI tray -> dipetakan mulai puncak plat dasar
-                        // interior (floorVFt) DITAMBAH jarak aman dasar yang
-                        // di-set user, sehingga seluruh susunan terangkat dan
-                        // tidak menyentuh plat.
-                        double lat, vert;
-                        if (pos != null)
-                        {
-                            lat = (pos.X - trayWmm / 2.0) * MmToFt;
-                            vert = floorVFt + bottomClrFt + pos.Y * MmToFt;
-                        }
-                        else
-                        {
-                            lat = (slot - (slots.Count - 1) / 2.0) * spacingFt;
-                            vert = floorVFt + bottomClrFt + effRFt; // duduk di atas jarak aman
-                        }
-
-                        // Jepit posisi agar seluruh badan conduit tetap di
-                        // ruang interior tray + jarak aman dari plat dasar
-                        // dan rail samping (keduanya dari dialog Pull).
-                        double latLo = latMinFt + sideClrFt + effRFt;
-                        double latHi = latMaxFt - sideClrFt - effRFt;
-                        lat = latHi > latLo
-                            ? Math.Clamp(lat, latLo, latHi)
-                            : (latLo + latHi) / 2.0;
-                        double vLo = floorVFt + bottomClrFt + effRFt;
-                        double vHi = Math.Max(vLo, halfHFt - effRFt);
-                        vert = Math.Clamp(vert, vLo, vHi);
+                        // Posisi penampang hasil penataan per-metode: tidak saling
+                        // tumpuk, duduk di atas jarak aman dasar (naik seragam saat
+                        // jarak dasar diubah).
+                        double lat = slotLat[slot];
+                        double vert = slotVert[slot];
 
                         string tag = TagPrefix + route.Key + "|" + cable.Nama;
 
@@ -353,6 +363,10 @@ namespace CableTrayHub.Revit
                 SyncStorage.Save(doc, mapping);
                 t.Commit();
             }
+
+            // Kembalikan workset aktif seperti semula.
+            if (prevActiveWorksetId != null)
+                doc.GetWorksetTable().SetActiveWorksetId(prevActiveWorksetId);
 
             // ---------- 4. Laporan ----------
             foreach (var s in skipped) summary.AppendLine($"◌ {s}: dilewati.");
@@ -446,6 +460,114 @@ namespace CableTrayHub.Revit
                     .GetNumberOfRules(RoutingPreferenceRuleGroupType.Elbows) > 0;
             }
             catch { return false; }
+        }
+
+        /// <summary>
+        /// Mengukur OD LUAR NYATA (ft) yang akan digambar Revit untuk tiap
+        /// diameter kabel unik. Diameter kabel di-set sebagai ukuran conduit;
+        /// bila ukuran itu tak ada di Conduit Sizes family, Revit men-snap ke
+        /// ukuran terdekat/default — OD hasil itulah yang dipakai merapatkan
+        /// jarak supaya tabung conduit tidak saling tumpuk. Diprobe dalam
+        /// SubTransaction lalu di-rollback (tak meninggalkan elemen).
+        /// </summary>
+        private static Dictionary<double, double> MeasureConduitOds(
+            Document doc, ElementId typeId, ElementId levelId,
+            List<(CableInfo Cable, PosXY Pos)> slots)
+        {
+            var map = new Dictionary<double, double>();
+            using (var st = new SubTransaction(doc))
+            {
+                st.Start();
+                XYZ p0 = XYZ.Zero, p1 = new XYZ(10, 0, 0);
+                foreach (var s in slots)
+                {
+                    double d = s.Cable.Diameter;
+                    if (map.ContainsKey(d)) continue;
+                    double odFt = d * MmToFt; // fallback: pakai diameter kabel
+                    try
+                    {
+                        Conduit c = Conduit.Create(doc, typeId, p0, p1, levelId);
+                        Parameter dia = c.get_Parameter(BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM);
+                        if (dia != null && !dia.IsReadOnly) { try { dia.Set(d * MmToFt); } catch { } }
+                        Parameter outer = c.get_Parameter(BuiltInParameter.RBS_CONDUIT_OUTER_DIAM_PARAM);
+                        if (outer != null && outer.HasValue) odFt = outer.AsDouble();
+                    }
+                    catch { /* pakai fallback */ }
+                    map[d] = Math.Max(odFt, MinConduitOdMm * MmToFt);
+                }
+                st.RollBack();
+            }
+            return map;
+        }
+
+        /// <summary>
+        /// Menata posisi penampang tiap conduit (lat/vert, ft) sesuai METODE dari
+        /// website — Flat Touching (satu baris rapat), Flat Spaced (satu baris
+        /// berjarak 1 diameter), Trefoil (kelompok 3 segitiga). Jarak memakai OD
+        /// NYATA (rMax) supaya tidak ada yang saling tumpuk; baris bawah duduk di
+        /// atas jarak aman dasar (floorFt).
+        /// </summary>
+        private static void ArrangeCrossSection(
+            List<(CableInfo Cable, PosXY Pos)> slots,
+            Dictionary<double, double> odFtByDia, string metode,
+            double availLeftFt, double availRightFt, double floorFt,
+            double[] slotLat, double[] slotVert)
+        {
+            int n = slots.Count;
+            double[] rFt = new double[n];
+            double rMaxFt = 0;
+            for (int i = 0; i < n; i++)
+            {
+                rFt[i] = odFtByDia[slots[i].Cable.Diameter] / 2.0;
+                if (rFt[i] > rMaxFt) rMaxFt = rFt[i];
+            }
+            double step = 2.0 * rMaxFt; // jarak antar-sumbu saat bersentuhan
+
+            bool trefoil = metode != null &&
+                           metode.IndexOf("Trefoil", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool spaced = metode != null &&
+                          metode.IndexOf("Spaced", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (trefoil)
+            {
+                // Kelompok 3: dua conduit di bawah + satu apex bersarang di lembah
+                // (naik rMax*√3). Sisa 1–2 di ujung digambar rata di baris bawah.
+                double cursor = availLeftFt;
+                int i = 0;
+                while (i < n)
+                {
+                    if (n - i >= 3)
+                    {
+                        slotLat[i] = cursor + rMaxFt; slotVert[i] = floorFt + rFt[i];
+                        slotLat[i + 1] = cursor + 3 * rMaxFt; slotVert[i + 1] = floorFt + rFt[i + 1];
+                        slotLat[i + 2] = cursor + 2 * rMaxFt;
+                        slotVert[i + 2] = floorFt + rMaxFt + rMaxFt * Math.Sqrt(3.0);
+                        cursor += 4 * rMaxFt;
+                        i += 3;
+                    }
+                    else
+                    {
+                        for (int j = i; j < n; j++)
+                        {
+                            slotLat[j] = cursor + rMaxFt + (j - i) * step;
+                            slotVert[j] = floorFt + rFt[j];
+                        }
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Flat: satu baris. Spaced = beri jeda satu diameter penuh (step).
+                double gap = spaced ? step : 0.0;
+                double x = availLeftFt + rMaxFt;
+                for (int i = 0; i < n; i++)
+                {
+                    slotLat[i] = x;
+                    slotVert[i] = floorFt + rFt[i];
+                    x += step + gap;
+                }
+            }
         }
 
         private static Conduit CreateConduit(Document doc, ElementId typeId, ElementId levelId,

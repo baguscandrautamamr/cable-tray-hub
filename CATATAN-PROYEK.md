@@ -141,7 +141,32 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 - Catatan: jarak aman di REVIT tetap dari dialog Pull (ronde 6). Kalau mau
   conduit di Revit juga menempel arm, set "jarak ke arm samping" = 0 di dialog.
 
+**Ronde 9 (22 Jul): Tipe conduit + Workset di dialog, anti-tumpuk, 3 metode**
+Tiga hal sekaligus (dialog Pull + `PullCommand.cs`):
+1. **Dua input dikembalikan ke dialog Pull**: dropdown **Tipe conduit** (semua
+   ConduitType di proyek, format "Family: Type") dan **Workset** (hanya bila
+   model workshared; conduit/elbow baru masuk ke workset itu via SetActiveWorkset
+   sebelum transaction, dikembalikan sesudahnya). Pilihan diingat di config
+   (`LastConduitType`, `LastWorkset`). Kalau tak ada pilihan → fallback auto
+   (tipe ber-aturan Elbow).
+2. **Conduit tidak saling tumpuk**: jarak antar-conduit dihitung dari **OD LUAR
+   NYATA** yang Revit gambar (probe `RBS_CONDUIT_OUTER_DIAM_PARAM` di
+   SubTransaction, rollback), bukan diameter kabel — karena Revit sering
+   menggambar conduit lebih besar (ter-snap ke Conduit Sizes) → dulu tumpuk.
+3. **3 metode dari web direproduksi di Revit** (`sim.Detail.Metode`):
+   - **Flat Touching** → satu baris rapat (bersentuhan).
+   - **Flat Spaced (De)** → satu baris berjarak satu diameter penuh.
+   - **Trefoil** → kelompok 3 segitiga (2 bawah + 1 apex bersarang, naik rMax·√3);
+     sisa 1–2 di ujung digambar rata.
+   Semua duduk di atas `floorV + bottomClr` → ubah "jarak ke dasar tray"
+   mengangkat semua conduit seragam. Web (index.html) tidak diubah — 3 metode
+   sudah ada di sana, plugin tinggal membaca field `metode`.
+
 **Belum diuji (kerjaan berikutnya):**
+-1. Uji ronde 9 di Revit: dialog Pull tampil dropdown Tipe conduit + Workset →
+   pilih → conduit masuk ke tipe & workset itu; cek TIDAK tumpuk; ganti metode
+   di web (Flat Touching / Spaced / Trefoil), Pull ulang → susunan di Revit ikut
+   berubah; ubah jarak dasar → semua conduit naik.
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari
    plat & menjauh dari arm, nilai diingat di pull berikutnya.

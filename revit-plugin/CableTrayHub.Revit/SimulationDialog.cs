@@ -1,7 +1,15 @@
 using System.Drawing;
 using System.Windows.Forms;
-using Autodesk.Revit.DB;
-using Autodesk.Revit.DB.Electrical;
+// Alias tipe Revit yang dipakai — hindari `using Autodesk.Revit.DB;` penuh
+// karena bentrok dengan System.Windows.Forms (Form) & System.Drawing (Color).
+using Document = Autodesk.Revit.DB.Document;
+using ElementId = Autodesk.Revit.DB.ElementId;
+using FilteredElementCollector = Autodesk.Revit.DB.FilteredElementCollector;
+using FilteredWorksetCollector = Autodesk.Revit.DB.FilteredWorksetCollector;
+using Workset = Autodesk.Revit.DB.Workset;
+using WorksetKind = Autodesk.Revit.DB.WorksetKind;
+using WorksetId = Autodesk.Revit.DB.WorksetId;
+using ConduitType = Autodesk.Revit.DB.Electrical.ConduitType;
 
 namespace CableTrayHub.Revit
 {

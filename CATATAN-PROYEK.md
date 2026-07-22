@@ -141,7 +141,30 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 - Catatan: jarak aman di REVIT tetap dari dialog Pull (ronde 6). Kalau mau
   conduit di Revit juga menempel arm, set "jarak ke arm samping" = 0 di dialog.
 
+**Ronde 9 (22 Jul): conduit tidak lagi saling tumpuk (rapat pakai OD nyata)**
+- Temuan: conduit SALING TUMPUK di penampang Revit walau susunan di kanvas web
+  sudah benar. Sebabnya BUKAN posisinya — posisi web sudah tak overlap MEMAKAI
+  diameter kabel. Tapi Revit menggambar conduit sebesar ukuran di **Conduit
+  Sizes** family; kalau diameter kabel tak ada di tabel, ukuran ter-snap ke
+  yang terdekat/ default (lebih besar) → tabung conduit lebih lebar dari jarak
+  antar-titiknya → tumpuk. (`PullCommand.cs:466` set nominal = diameter kabel.)
+- Fix (pilihan user: *rapatkan ulang pakai OD asli*): plugin kini **mengukur OD
+  LUAR nyata** tiap ukuran kabel lewat probe conduit di `SubTransaction` (baca
+  `RBS_CONDUIT_OUTER_DIAM_PARAM`, langsung rollback). Pola & BARIS dari kanvas
+  web DIPERTAHANKAN (dikelompokkan dari `pos.Y`, urut kiri→kanan dari `pos.X`),
+  tapi jarak antar-conduit dihitung dari OD nyata → tabung bersentuhan tanpa
+  tumpuk. Baris atas bersarang di lembah (offset rMax, naik rMax·√3).
+- Input worksheet (posisi tiap kabel) & input conduit TIDAK dihapus — posisi web
+  tetap jadi acuan pola/urutan. Seluruh susunan duduk di atas `floorV +
+  bottomClr` → ubah "jarak ke dasar tray" di dialog Pull mengangkat SEMUA conduit
+  seragam. Clamp atas dihapus: kalau melebihi kapasitas, baris atas naik keluar
+  tray (sinyal penuh) alih-alih dipaksa tumpuk.
+
 **Belum diuji (kerjaan berikutnya):**
+-1. Uji ronde 9 di Revit: Pull jalur yang tadinya tumpuk → cek conduit kini
+   bersentuhan tanpa tumpuk (pola tetap seperti kanvas web); ubah "jarak ke
+   dasar tray" 10→30 → cek SEMUA conduit ikut naik. Kalau family conduit tak
+   punya ukuran yang cocok, OD nyata > diameter kabel → jarak otomatis melebar.
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari
    plat & menjauh dari arm, nilai diingat di pull berikutnya.

@@ -21,10 +21,58 @@ bisa diakses dari Vercel maupun plugin Revit lewat REST API.
 
 | File | Fungsi |
 |---|---|
-| `Code.gs` | Backend Apps Script: web app + REST API JSON |
-| `Setup.gs` | Pembuat tabel database di Google Sheets (`initSetup`) + upgrade tanpa hapus data (`upgradeSheets`) |
+| `Code.gs` | Backend Apps Script: web app + REST API JSON + login & manajemen user |
+| `Setup.gs` | Pembuat tabel database di Google Sheets (`initSetup`), akun login (`initUsers`) + upgrade tanpa hapus data (`upgradeSheets`) |
 | `index.html` | Frontend — bisa di-host di Apps Script ATAU Vercel |
 | `revit-plugin/` | Add-in Revit 2025 (C# .NET 8) — lihat [revit-plugin/README.md](revit-plugin/README.md) |
+
+## Gerbang Login
+
+Website dikunci: pengunjung harus login sebelum bisa membuka aplikasi.
+Akun disimpan di sheet **`Users`**, password hanya disimpan sebagai
+**SHA-256 bergaram** (salt acak per user) — password asli tidak pernah
+tersimpan, baik di spreadsheet maupun di repo ini.
+
+Ada dua peran:
+
+| Peran | Bisa apa |
+|---|---|
+| `user` | Memakai aplikasi (simulasi, riwayat, laporan) |
+| `admin` | Semua di atas + kelola katalog kabel/tray + **tambah/hapus/nonaktifkan user** dari menu **Profil → Manajemen User** |
+
+### Menyiapkan akun pertama (sekali saja)
+
+> ⚠ Lakukan langkah ini **sebelum** website versi baru dipakai — selama sheet
+> `Users` belum ada, tidak ada seorang pun yang bisa masuk (gerbang sengaja
+> menolak bila ragu, bukan membuka).
+
+1. Buka editor Apps Script Anda → salin `Code.gs` dan `Setup.gs` versi terbaru.
+2. Di `Setup.gs`, isi `SEED_USERS` **di editor Apps Script** (jangan di repo):
+   ```js
+   var SEED_USERS = [
+     { username: "admin", password: "PASSWORD_ADMIN_ANDA", role: "admin" },
+     { username: "user1", password: "PASSWORD_USER_ANDA",  role: "user"  }
+   ];
+   ```
+3. Jalankan fungsi **`initUsers`** sekali → sheet `Users` terbuat & terisi.
+4. **Kosongkan lagi `SEED_USERS`** di editor supaya password tidak tertinggal.
+5. **Deploy → Manage deployments → Edit → New version** (wajib, supaya endpoint
+   login aktif di URL `/exec`).
+
+Selanjutnya semua penambahan user cukup lewat dashboard admin di website.
+
+### Catatan keamanan (baca sebelum mengandalkan ini)
+
+- Password **tidak pernah** ditulis di repo. Kalau suatu saat ada password
+  terlanjur ter-commit, **ganti password itu** — riwayat git menyimpannya
+  selamanya walau barisnya sudah dihapus.
+- Ini aplikasi **statis**, jadi gerbang login menyaring akses orang biasa,
+  **bukan** pengaman tingkat server: orang yang paham devtools masih bisa
+  melewati tampilannya. Endpoint data (`getSimulation`, dll.) juga tetap
+  terbuka karena dipakai plugin Revit. **Jangan simpan data rahasia di sini.**
+- Sesi berlaku 6 jam, lalu diminta login ulang.
+- Bila server tidak terjangkau, login masih bisa dilakukan **offline** memakai
+  kredensial terverifikasi dari login online terakhir di perangkat itu.
 
 ## Plugin Revit — unduh hasil build
 

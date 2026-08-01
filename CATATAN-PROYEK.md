@@ -248,6 +248,47 @@ dialog Pull**
   y≈99.8 (nilai benar untuk OD 73).
 - sw cache naik ke v9.
 
+**Ronde 13 (1 Agu): gerbang login + manajemen user di dashboard admin**
+- Permintaan: website tidak boleh bisa dibuka sembarang orang; ada akun admin
+  dan akun user biasa, dan admin bisa menambah user dari dashboard.
+- Akun disimpan di sheet baru **`Users`** (Username, Password_Hash, Salt, Role,
+  Aktif, Dibuat_Pada, Terakhir_Login). Password hanya disimpan sebagai
+  **SHA-256 bergaram** — formula `SHA256(salt + "|" + password)` dipakai identik
+  di `Code.gs` (Utilities.computeDigest) dan di web (Web Crypto), supaya login
+  online & offline cocok.
+- `Setup.gs`: `initUsers()` + `ensureUsersSheet_()`. Daftar `SEED_USERS`
+  sengaja DIKOSONGKAN di repo — password diisi user di editor Apps Script
+  masing-masing, lalu dikosongkan lagi. Alasannya: sekali password masuk
+  riwayat git, ia tersimpan selamanya walau barisnya dihapus.
+- `Code.gs`: endpoint `login`, `logout`, `listUsers`, `addUser`, `deleteUser`,
+  `setUserActive`, `changePassword`. Sesi = token acak di CacheService (6 jam).
+  Semua endpoint manajemen user wajib token ber-role admin. Ada pengaman:
+  admin aktif terakhir tidak boleh dihapus/dinonaktifkan, dan akun yang sedang
+  dipakai tidak boleh menghapus dirinya sendiri.
+- `index.html`: overlay `#loginGate` + CSS `body.app-locked > *:not(#loginGate)
+  { display:none }`; inisialisasi aplikasi dipindah ke `startApp()` yang baru
+  jalan setelah sesi sah. Panel **Profil → Manajemen User** (khusus admin):
+  tambah user, ganti password, aktif/nonaktif, hapus. Sesi disimpan di
+  localStorage; ada jalur login OFFLINE memakai salt+hash hasil login online
+  terakhir di perangkat itu.
+- ⚠ **Pengalih peran lama DIHAPUS**: dulu ada tombol Guest/Admin yang cuma
+  minta password `'0009'` lewat `prompt()` dan hard-coded di `index.html` —
+  siapa pun bisa jadi Admin, jadi gerbang login akan percuma kalau dibiarkan.
+  Peran sekarang murni ikut akun yang login.
+- Diuji dengan Playwright + backend Apps Script tiruan (16 skenario, semua
+  lulus): gerbang mengunci konten & navigasi, password salah ditolak, login
+  admin/user berhasil, panel admin hanya untuk admin, tambah user muncul di
+  daftar, sesi bertahan setelah reload, logout mengunci lagi.
+- ⚠ WAJIB sebelum dipakai: salin `Code.gs`+`Setup.gs` terbaru ke Apps Script →
+  isi `SEED_USERS` → jalankan `initUsers()` → kosongkan lagi → Deploy → New
+  version. Selama sheet `Users` belum ada, TIDAK ADA yang bisa masuk (gerbang
+  sengaja fail-closed). Langkah lengkap ada di README.
+- Batas kemampuan (jujur): ini aplikasi statis, jadi gerbang ini menyaring
+  orang biasa, BUKAN pengaman tingkat server — yang paham devtools masih bisa
+  melewati tampilannya, dan endpoint data tetap terbuka karena dipakai plugin
+  Revit. Jangan taruh data rahasia di aplikasi ini.
+- sw cache naik ke v10.
+
 **Belum diuji (kerjaan berikutnya):**
 -2. Uji ronde 10 di Revit: Pull jalur yang berisi campuran kabel besar+kecil
    (mis. trefoil) → cek conduit kabel kecil kini sejajar dasar, tidak melayang

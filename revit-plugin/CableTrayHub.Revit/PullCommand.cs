@@ -60,7 +60,9 @@ namespace CableTrayHub.Revit
             // ---------- 1. Dialog: ambil data simulasi dari website ----------
             var config = PluginConfig.Load();
             Simulation sim;
-            using (var dialog = new SimulationDialog(config))
+            ElementId chosenConduitTypeId = ElementId.InvalidElementId;
+            WorksetId chosenWorksetId = null;
+            using (var dialog = new SimulationDialog(config, doc))
             {
                 if (dialog.ShowDialog() != DialogResult.OK || dialog.Result == null)
                     return Result.Cancelled;
@@ -70,6 +72,10 @@ namespace CableTrayHub.Revit
                 config.LastSimulationId = dialog.SimulationId;
                 config.BottomClearanceMm = dialog.BottomClearanceMm;
                 config.SideClearanceMm = dialog.SideClearanceMm;
+                config.LastConduitType = dialog.SelectedConduitTypeName;
+                config.LastWorkset = dialog.SelectedWorksetName;
+                chosenConduitTypeId = dialog.SelectedConduitTypeId;
+                chosenWorksetId = dialog.SelectedWorksetId;
                 config.Save();
             }
 
@@ -142,14 +148,30 @@ namespace CableTrayHub.Revit
                 return Result.Cancelled;
             }
 
-            // Pilih ConduitType yang punya aturan elbow di Routing Preferences —
-            // tipe "without fittings" membuat NewElbowFitting selalu gagal.
-            ConduitType conduitType = PickConduitType(doc, out bool typeHasElbow);
+            // Tipe conduit dipilih user di dialog. Bila tak ada pilihan valid,
+            // fallback auto: tipe yang punya aturan Elbow di Routing Preferences
+            // (tipe "without fittings" membuat NewElbowFitting selalu gagal).
+            ConduitType conduitType = doc.GetElement(chosenConduitTypeId) as ConduitType;
+            bool typeHasElbow;
+            if (conduitType != null)
+                typeHasElbow = HasElbowRule(conduitType);
+            else
+                conduitType = PickConduitType(doc, out typeHasElbow);
             if (conduitType == null)
             {
                 message = "Project ini tidak memiliki Conduit Type. " +
                           "Gunakan template Electrical atau load type conduit dahulu.";
                 return Result.Failed;
+            }
+
+            // Workset pilihan user (bila model workshared) — set sebagai workset
+            // AKTIF sebelum transaction supaya semua conduit/elbow baru masuk ke
+            // situ; dikembalikan lagi setelah selesai.
+            WorksetId prevActiveWorksetId = null;
+            if (doc.IsWorkshared && chosenWorksetId != null)
+            {
+                prevActiveWorksetId = doc.GetWorksetTable().GetActiveWorksetId();
+                doc.GetWorksetTable().SetActiveWorksetId(chosenWorksetId);
             }
 
             // ---------- 3. Transaction: hapus conduit lama + gambar ulang ----------
@@ -434,6 +456,10 @@ namespace CableTrayHub.Revit
                 SyncStorage.Save(doc, mapping);
                 t.Commit();
             }
+
+            // Kembalikan workset aktif seperti semula.
+            if (prevActiveWorksetId != null)
+                doc.GetWorksetTable().SetActiveWorksetId(prevActiveWorksetId);
 
             // ---------- 4. Laporan ----------
             foreach (var s in skipped) summary.AppendLine($"◌ {s}: dilewati.");

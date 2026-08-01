@@ -160,11 +160,50 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
   seragam. Clamp atas dihapus: kalau melebihi kapasitas, baris atas naik keluar
   tray (sinyal penuh) alih-alih dipaksa tumpuk.
 
+**Ronde 9b (22 Jul, digabung dari branch terpisah): Tipe conduit + Workset di
+dialog Pull**
+- Dialog Pull dapat dua dropdown baru: **Tipe conduit** (semua ConduitType di
+  proyek, format "Family: Type") dan **Workset** (hanya tampil bila model
+  workshared; conduit/elbow baru dibuat masuk ke workset itu via
+  `SetActiveWorksetId` sebelum transaction, dikembalikan ke workset semula
+  sesudahnya). Pilihan diingat di config (`LastConduitType`, `LastWorkset`);
+  kalau belum pernah pilih → fallback otomatis ke tipe yang punya aturan Elbow.
+- Percobaan re-implementasi penataan penampang langsung dari nama metode
+  (`ArrangeCrossSection`, baca `sim.Detail.Metode`) di branch yang sama TIDAK
+  dipakai — diganti tetap pakai pendekatan Ronde 9/10 (replay posisi dari
+  kanvas web) karena itu sudah teruji dan otomatis ikut metode apa pun +
+  hasil drag manual user, tanpa perlu logika Trefoil terpisah di C#.
+
+**Ronde 10 (1 Agu): kanvas web gepeng/menumpuk + conduit kecil melayang**
+- Laporan: (1) kanvas penampang di web terlihat menumpuk/lonjong setiap
+  tambah kabel; (2) di Revit conduit kabel terkecil melayang, tidak sejajar
+  dasar tray dengan yang lain.
+- Fix #1 (`index.html`): `<canvas id="trayVisualizer">` tak punya atribut
+  `width`/`height`, jadi buffer gambarnya default ke ukuran bawaan browser
+  300×150px sementara tampilannya di-CSS ke `w-full × 220px` — buffer kecil
+  itu diregangkan browser TIDAK PROPORSIONAL ke ukuran tampil sebenarnya,
+  bikin lingkaran kabel lonjong & terlihat menumpuk. Ditambahkan
+  `syncCanvasResolution()` yang menyamakan resolusi buffer dengan ukuran
+  tampil sebelum menghitung posisi & menggambar.
+- Fix #2 (`PullCommand.cs`): deteksi baris (row) conduit per jalur dulu
+  memakai SATU ambang batas global (radius kabel TERBESAR se-jalur) untuk
+  memisahkan baris dasar vs baris apex trefoil. Kalau jalur berisi campuran
+  kabel besar & kecil, ambang yang kegedean bikin baris apex kabel kecil ikut
+  "kesedot" ke baris kabel besar (atau sebaliknya) → conduit kecil melayang,
+  tidak sejajar. Sekarang baris dihitung PER KELOMPOK kabel (radius kabel itu
+  sendiri sebagai ambang), baris dasar tiap kelompok tetap dianggap "duduk di
+  lantai tray" yang sama untuk semua kelompok.
+
 **Belum diuji (kerjaan berikutnya):**
+-2. Uji ronde 10 di Revit: Pull jalur yang berisi campuran kabel besar+kecil
+   (mis. trefoil) → cek conduit kabel kecil kini sejajar dasar, tidak melayang
+   lagi dibanding conduit lain di baris yang sama.
 -1. Uji ronde 9 di Revit: Pull jalur yang tadinya tumpuk → cek conduit kini
    bersentuhan tanpa tumpuk (pola tetap seperti kanvas web); ubah "jarak ke
    dasar tray" 10→30 → cek SEMUA conduit ikut naik. Kalau family conduit tak
    punya ukuran yang cocok, OD nyata > diameter kabel → jarak otomatis melebar.
+0. Uji ronde 9b: dialog Pull tampil dropdown Tipe conduit + Workset → pilih →
+   conduit masuk ke tipe & workset itu; nilai diingat di pull berikutnya.
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari
    plat & menjauh dari arm, nilai diingat di pull berikutnya.

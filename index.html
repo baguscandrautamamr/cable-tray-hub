@@ -1705,8 +1705,26 @@ function showToast(message, type = "success") {
       syncLiveReportPreview(targetCablesList, totalRequiredWidth, effectiveWidth, totalWeight, targetMaxLoad, statusSpace);
     }
 
+    // Kanvas <canvas> tanpa atribut width/height memakai resolusi bawaan
+    // browser 300x150px, sedangkan tampilannya di-stretch CSS ke ukuran
+    // sebenarnya (w-full x 220px) — semua kabel jadi digambar & dihitung
+    // dalam kotak 300x150 lalu diregangkan TIDAK PROPORSIONAL saat tampil,
+    // membuat lingkaran kabel gepeng/berdempetan dan posisinya meleset dari
+    // yang seharusnya. Samakan resolusi gambar kanvas dengan ukuran
+    // tampilnya supaya tidak ada peregangan.
+    function syncCanvasResolution(canvas) {
+      const displayWidth = canvas.clientWidth;
+      const displayHeight = canvas.clientHeight;
+      if (displayWidth > 0 && displayHeight > 0 &&
+          (canvas.width !== displayWidth || canvas.height !== displayHeight)) {
+        canvas.width = displayWidth;
+        canvas.height = displayHeight;
+      }
+    }
+
     function generateDefaultPositions(cables, method, width, height) {
       const canvas = document.getElementById('trayVisualizer');
+      syncCanvasResolution(canvas);
       const scaleX = (canvas.width - 40) / width;
       const trayX = 20;
       const trayY = 30;
@@ -1752,6 +1770,7 @@ function showToast(message, type = "success") {
 
     function drawTrayFromState() {
       const canvas = document.getElementById('trayVisualizer');
+      syncCanvasResolution(canvas);
       const ctx = canvas.getContext('2d');
       const isDarkMode = document.documentElement.classList.contains('dark');
       

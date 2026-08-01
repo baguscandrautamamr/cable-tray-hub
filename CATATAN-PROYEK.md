@@ -141,32 +141,69 @@ sebelum itu tombol Hapus akan menampilkan error "Unknown action".
 - Catatan: jarak aman di REVIT tetap dari dialog Pull (ronde 6). Kalau mau
   conduit di Revit juga menempel arm, set "jarak ke arm samping" = 0 di dialog.
 
-**Ronde 9 (22 Jul): Tipe conduit + Workset di dialog, anti-tumpuk, 3 metode**
-Tiga hal sekaligus (dialog Pull + `PullCommand.cs`):
-1. **Dua input dikembalikan ke dialog Pull**: dropdown **Tipe conduit** (semua
-   ConduitType di proyek, format "Family: Type") dan **Workset** (hanya bila
-   model workshared; conduit/elbow baru masuk ke workset itu via SetActiveWorkset
-   sebelum transaction, dikembalikan sesudahnya). Pilihan diingat di config
-   (`LastConduitType`, `LastWorkset`). Kalau tak ada pilihan → fallback auto
-   (tipe ber-aturan Elbow).
-2. **Conduit tidak saling tumpuk**: jarak antar-conduit dihitung dari **OD LUAR
-   NYATA** yang Revit gambar (probe `RBS_CONDUIT_OUTER_DIAM_PARAM` di
-   SubTransaction, rollback), bukan diameter kabel — karena Revit sering
-   menggambar conduit lebih besar (ter-snap ke Conduit Sizes) → dulu tumpuk.
-3. **3 metode dari web direproduksi di Revit** (`sim.Detail.Metode`):
-   - **Flat Touching** → satu baris rapat (bersentuhan).
-   - **Flat Spaced (De)** → satu baris berjarak satu diameter penuh.
-   - **Trefoil** → kelompok 3 segitiga (2 bawah + 1 apex bersarang, naik rMax·√3);
-     sisa 1–2 di ujung digambar rata.
-   Semua duduk di atas `floorV + bottomClr` → ubah "jarak ke dasar tray"
-   mengangkat semua conduit seragam. Web (index.html) tidak diubah — 3 metode
-   sudah ada di sana, plugin tinggal membaca field `metode`.
+**Ronde 9 (22 Jul): conduit tidak lagi saling tumpuk (rapat pakai OD nyata)**
+- Temuan: conduit SALING TUMPUK di penampang Revit walau susunan di kanvas web
+  sudah benar. Sebabnya BUKAN posisinya — posisi web sudah tak overlap MEMAKAI
+  diameter kabel. Tapi Revit menggambar conduit sebesar ukuran di **Conduit
+  Sizes** family; kalau diameter kabel tak ada di tabel, ukuran ter-snap ke
+  yang terdekat/ default (lebih besar) → tabung conduit lebih lebar dari jarak
+  antar-titiknya → tumpuk. (`PullCommand.cs:466` set nominal = diameter kabel.)
+- Fix (pilihan user: *rapatkan ulang pakai OD asli*): plugin kini **mengukur OD
+  LUAR nyata** tiap ukuran kabel lewat probe conduit di `SubTransaction` (baca
+  `RBS_CONDUIT_OUTER_DIAM_PARAM`, langsung rollback). Pola & BARIS dari kanvas
+  web DIPERTAHANKAN (dikelompokkan dari `pos.Y`, urut kiri→kanan dari `pos.X`),
+  tapi jarak antar-conduit dihitung dari OD nyata → tabung bersentuhan tanpa
+  tumpuk. Baris atas bersarang di lembah (offset rMax, naik rMax·√3).
+- Input worksheet (posisi tiap kabel) & input conduit TIDAK dihapus — posisi web
+  tetap jadi acuan pola/urutan. Seluruh susunan duduk di atas `floorV +
+  bottomClr` → ubah "jarak ke dasar tray" di dialog Pull mengangkat SEMUA conduit
+  seragam. Clamp atas dihapus: kalau melebihi kapasitas, baris atas naik keluar
+  tray (sinyal penuh) alih-alih dipaksa tumpuk.
+
+**Ronde 9b (22 Jul, digabung dari branch terpisah): Tipe conduit + Workset di
+dialog Pull**
+- Dialog Pull dapat dua dropdown baru: **Tipe conduit** (semua ConduitType di
+  proyek, format "Family: Type") dan **Workset** (hanya tampil bila model
+  workshared; conduit/elbow baru dibuat masuk ke workset itu via
+  `SetActiveWorksetId` sebelum transaction, dikembalikan ke workset semula
+  sesudahnya). Pilihan diingat di config (`LastConduitType`, `LastWorkset`);
+  kalau belum pernah pilih → fallback otomatis ke tipe yang punya aturan Elbow.
+- Percobaan re-implementasi penataan penampang langsung dari nama metode
+  (`ArrangeCrossSection`, baca `sim.Detail.Metode`) di branch yang sama TIDAK
+  dipakai — diganti tetap pakai pendekatan Ronde 9/10 (replay posisi dari
+  kanvas web) karena itu sudah teruji dan otomatis ikut metode apa pun +
+  hasil drag manual user, tanpa perlu logika Trefoil terpisah di C#.
+
+**Ronde 10 (1 Agu): kanvas web gepeng/menumpuk + conduit kecil melayang**
+- Laporan: (1) kanvas penampang di web terlihat menumpuk/lonjong setiap
+  tambah kabel; (2) di Revit conduit kabel terkecil melayang, tidak sejajar
+  dasar tray dengan yang lain.
+- Fix #1 (`index.html`): `<canvas id="trayVisualizer">` tak punya atribut
+  `width`/`height`, jadi buffer gambarnya default ke ukuran bawaan browser
+  300×150px sementara tampilannya di-CSS ke `w-full × 220px` — buffer kecil
+  itu diregangkan browser TIDAK PROPORSIONAL ke ukuran tampil sebenarnya,
+  bikin lingkaran kabel lonjong & terlihat menumpuk. Ditambahkan
+  `syncCanvasResolution()` yang menyamakan resolusi buffer dengan ukuran
+  tampil sebelum menghitung posisi & menggambar.
+- Fix #2 (`PullCommand.cs`): deteksi baris (row) conduit per jalur dulu
+  memakai SATU ambang batas global (radius kabel TERBESAR se-jalur) untuk
+  memisahkan baris dasar vs baris apex trefoil. Kalau jalur berisi campuran
+  kabel besar & kecil, ambang yang kegedean bikin baris apex kabel kecil ikut
+  "kesedot" ke baris kabel besar (atau sebaliknya) → conduit kecil melayang,
+  tidak sejajar. Sekarang baris dihitung PER KELOMPOK kabel (radius kabel itu
+  sendiri sebagai ambang), baris dasar tiap kelompok tetap dianggap "duduk di
+  lantai tray" yang sama untuk semua kelompok.
 
 **Belum diuji (kerjaan berikutnya):**
--1. Uji ronde 9 di Revit: dialog Pull tampil dropdown Tipe conduit + Workset →
-   pilih → conduit masuk ke tipe & workset itu; cek TIDAK tumpuk; ganti metode
-   di web (Flat Touching / Spaced / Trefoil), Pull ulang → susunan di Revit ikut
-   berubah; ubah jarak dasar → semua conduit naik.
+-2. Uji ronde 10 di Revit: Pull jalur yang berisi campuran kabel besar+kecil
+   (mis. trefoil) → cek conduit kabel kecil kini sejajar dasar, tidak melayang
+   lagi dibanding conduit lain di baris yang sama.
+-1. Uji ronde 9 di Revit: Pull jalur yang tadinya tumpuk → cek conduit kini
+   bersentuhan tanpa tumpuk (pola tetap seperti kanvas web); ubah "jarak ke
+   dasar tray" 10→30 → cek SEMUA conduit ikut naik. Kalau family conduit tak
+   punya ukuran yang cocok, OD nyata > diameter kabel → jarak otomatis melebar.
+0. Uji ronde 9b: dialog Pull tampil dropdown Tipe conduit + Workset → pilih →
+   conduit masuk ke tipe & workset itu; nilai diingat di pull berikutnya.
 0. Uji ronde 6: install build terbaru → dialog Pull menampilkan 2 input jarak
    → coba mis. dasar 20 / samping 15 → cek di penampang: kabel terangkat dari
    plat & menjauh dari arm, nilai diingat di pull berikutnya.

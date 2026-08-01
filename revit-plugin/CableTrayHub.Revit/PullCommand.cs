@@ -258,21 +258,110 @@ namespace CableTrayHub.Revit
                     ElementId levelId = plan.Trays[0].ReferenceLevel?.Id
                         ?? new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstElementId();
 
-                    // === Susun penampang sesuai METODE dari website + OD NYATA ===
-                    // 3 metode (Flat Touching / Flat Spaced (De) / Trefoil) di web
-                    // direproduksi di Revit. Jarak antar-conduit dihitung dari OD
-                    // LUAR NYATA (Revit menggambar conduit sebesar ukuran Conduit
-                    // Sizes, sering > diameter kabel) supaya TIDAK saling tumpuk.
-                    // Seluruh susunan duduk di atas jarak aman dasar (bottomClr) →
-                    // ubah "jarak ke dasar" mengangkat semua conduit seragam.
-                    string metode = string.IsNullOrEmpty(sim.Detail?.Metode)
-                        ? "Flat Touching" : sim.Detail.Metode;
+                    // === Rapatkan ulang penampang pakai OD conduit NYATA ===
+                    // Susunan dari kanvas web sudah benar (tidak overlap) MEMAKAI
+                    // diameter kabel, tapi Revit menggambar conduit sebesar ukuran
+                    // di Conduit Sizes (sering LEBIH BESAR dari diameter kabel /
+                    // ter-snap ke ukuran default) -> tabung conduit tumpang tindih.
+                    // Solusi: pola & BARIS dari web dipertahankan (dikelompokkan
+                    // dari pos.Y, urut kiri->kanan dari pos.X), tapi jarak antar-
+                    // conduit dihitung dari OD NYATA supaya bersentuhan tanpa tumpuk.
                     var odFtByDia = MeasureConduitOds(doc, conduitType.Id, levelId, slots);
                     double[] slotLat = new double[slots.Count];
                     double[] slotVert = new double[slots.Count];
-                    ArrangeCrossSection(slots, odFtByDia, metode,
-                        latMinFt + sideClrFt, latMaxFt - sideClrFt, floorVFt + bottomClrFt,
-                        slotLat, slotVert);
+                    {
+                        double[] rFt = new double[slots.Count];
+                        double rMaxFt = 0;
+                        for (int s = 0; s < slots.Count; s++)
+                        {
+                            rFt[s] = odFtByDia[slots[s].Cable.Diameter] / 2.0;
+                            if (rFt[s] > rMaxFt) rMaxFt = rFt[s];
+                        }
+
+                        // Baris LOKAL per kelompok kabel (satu CableInfo = satu jenis/
+                        // diameter): pakai radius kabel itu SENDIRI sebagai ambang batas,
+                        // bukan radius kabel terbesar se-jalur. Kalau jalur ini campur
+                        // ukuran (mis. kabel besar + kabel kecil), ambang global yang
+                        // dulu dipakai (radius kabel terbesar) sering lebih besar dari
+                        // jarak dasar->apex trefoil kabel KECIL itu sendiri, sehingga
+                        // apex-nya ikut "kesedot" ke baris dasar kabel besar (atau
+                        // sebaliknya baris dasarnya ketarik ke atas) -> conduit kecil
+                        // melayang/tidak sejajar. Baris dasar tiap kelompok (row 0)
+                        // selalu berarti "duduk di lantai tray", sama untuk semua
+                        // kelompok, jadi indeks baris lokal bisa langsung dipakai
+                        // sebagai indeks baris global tanpa perlu dibandingkan silang.
+                        int[] rowIdx = new int[slots.Count];
+                        for (int gStart = 0; gStart < slots.Count;)
+                        {
+                            int gEnd = gStart + 1;
+                            while (gEnd < slots.Count &&
+                                   ReferenceEquals(slots[gEnd].Cable, slots[gStart].Cable)) gEnd++;
+
+                            var local = new List<int>();
+                            for (int t = gStart; t < gEnd; t++) local.Add(t);
+                            local.Sort((a, b) => (slots[a].Pos?.Y ?? 0).CompareTo(slots[b].Pos?.Y ?? 0));
+
+                            double ownGapMm = rFt[gStart] / MmToFt; // radius kabel kelompok ini (mm)
+                            int r = 0;
+                            double anchorY = 0;
+                            bool first = true;
+                            foreach (int t in local)
+                            {
+                                double y = slots[t].Pos?.Y ?? 0;
+                                if (first) { anchorY = y; first = false; }
+                                else if (y - anchorY > ownGapMm) { r++; anchorY = y; }
+                                rowIdx[t] = r;
+                            }
+
+                            gStart = gEnd;
+                        }
+
+                        var order = new List<int>();
+                        for (int s = 0; s < slots.Count; s++) order.Add(s);
+                        order.Sort((a, b) =>
+                        {
+                            int c = rowIdx[a].CompareTo(rowIdx[b]);
+                            if (c != 0) return c;
+                            double xa = slots[a].Pos?.X ?? a, xb = slots[b].Pos?.X ?? b;
+                            return xa.CompareTo(xb);
+                        });
+
+                        var rows = new List<List<int>>();
+                        int curRow = -1;
+                        foreach (int s in order)
+                        {
+                            if (rows.Count == 0 || rowIdx[s] != curRow)
+                            {
+                                rows.Add(new List<int>());
+                                curRow = rowIdx[s];
+                            }
+                            rows[rows.Count - 1].Add(s);
+                        }
+
+                        // Tata ulang: baris bawah menempel jarak aman dasar; baris
+                        // atas bersarang di lembah (geser setengah langkah) dan naik
+                        // rMax*√3. Jarak antar-kolom = OD terbesar (aman utk semua).
+                        double availLeftFt = latMinFt + sideClrFt;
+                        double floorFt = floorVFt + bottomClrFt;
+                        double stepFt = 2.0 * rMaxFt;
+                        double rowHFt = rMaxFt * Math.Sqrt(3.0);
+                        for (int r = 0; r < rows.Count; r++)
+                        {
+                            var rowSlots = rows[r];
+                            rowSlots.Sort((a, b) =>
+                            {
+                                double xa = slots[a].Pos?.X ?? a, xb = slots[b].Pos?.X ?? b;
+                                return xa.CompareTo(xb);
+                            });
+                            double off = (r % 2 == 1) ? rMaxFt : 0.0;
+                            for (int i = 0; i < rowSlots.Count; i++)
+                            {
+                                int s = rowSlots[i];
+                                slotLat[s] = availLeftFt + rMaxFt + off + i * stepFt;
+                                slotVert[s] = floorFt + rFt[s] + r * rowHFt;
+                            }
+                        }
+                    }
 
                     // Frame penampang tiap segmen: dihitung SEKALI untuk seluruh
                     // rantai dengan parallel transport (frame ikut berputar di
@@ -290,13 +379,17 @@ namespace CableTrayHub.Revit
                     {
                         CableInfo cable = slots[slot].Cable;
 
-                        // OD LUAR NYATA yang digambar Revit (dipakai untuk elbow
-                        // annulus; sudah jadi dasar jarak antar-conduit di atas).
+                        // OD NYATA yang digambar Revit (bukan diameter kabel) —
+                        // dipakai untuk elbow annulus & sudah jadi dasar jarak
+                        // antar-conduit pada penataan ulang di atas.
                         double effOdMm = odFtByDia[cable.Diameter] / MmToFt;
 
-                        // Posisi penampang hasil penataan per-metode: tidak saling
-                        // tumpuk, duduk di atas jarak aman dasar (naik seragam saat
-                        // jarak dasar diubah).
+                        // Posisi penampang hasil rapat-ulang: pola/baris dari web
+                        // dipertahankan, jarak antar-conduit pakai OD nyata → tidak
+                        // saling tumpuk. Seluruh susunan duduk di atas jarak aman
+                        // dasar, jadi mengubah "jarak ke dasar tray" mengangkat
+                        // SEMUA conduit seragam. Tanpa clamp atas: kalau melebihi
+                        // kapasitas, baris atas naik keluar tray (sinyal penuh).
                         double lat = slotLat[slot];
                         double vert = slotVert[slot];
 
@@ -498,76 +591,6 @@ namespace CableTrayHub.Revit
                 st.RollBack();
             }
             return map;
-        }
-
-        /// <summary>
-        /// Menata posisi penampang tiap conduit (lat/vert, ft) sesuai METODE dari
-        /// website — Flat Touching (satu baris rapat), Flat Spaced (satu baris
-        /// berjarak 1 diameter), Trefoil (kelompok 3 segitiga). Jarak memakai OD
-        /// NYATA (rMax) supaya tidak ada yang saling tumpuk; baris bawah duduk di
-        /// atas jarak aman dasar (floorFt).
-        /// </summary>
-        private static void ArrangeCrossSection(
-            List<(CableInfo Cable, PosXY Pos)> slots,
-            Dictionary<double, double> odFtByDia, string metode,
-            double availLeftFt, double availRightFt, double floorFt,
-            double[] slotLat, double[] slotVert)
-        {
-            int n = slots.Count;
-            double[] rFt = new double[n];
-            double rMaxFt = 0;
-            for (int i = 0; i < n; i++)
-            {
-                rFt[i] = odFtByDia[slots[i].Cable.Diameter] / 2.0;
-                if (rFt[i] > rMaxFt) rMaxFt = rFt[i];
-            }
-            double step = 2.0 * rMaxFt; // jarak antar-sumbu saat bersentuhan
-
-            bool trefoil = metode != null &&
-                           metode.IndexOf("Trefoil", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool spaced = metode != null &&
-                          metode.IndexOf("Spaced", StringComparison.OrdinalIgnoreCase) >= 0;
-
-            if (trefoil)
-            {
-                // Kelompok 3: dua conduit di bawah + satu apex bersarang di lembah
-                // (naik rMax*√3). Sisa 1–2 di ujung digambar rata di baris bawah.
-                double cursor = availLeftFt;
-                int i = 0;
-                while (i < n)
-                {
-                    if (n - i >= 3)
-                    {
-                        slotLat[i] = cursor + rMaxFt; slotVert[i] = floorFt + rFt[i];
-                        slotLat[i + 1] = cursor + 3 * rMaxFt; slotVert[i + 1] = floorFt + rFt[i + 1];
-                        slotLat[i + 2] = cursor + 2 * rMaxFt;
-                        slotVert[i + 2] = floorFt + rMaxFt + rMaxFt * Math.Sqrt(3.0);
-                        cursor += 4 * rMaxFt;
-                        i += 3;
-                    }
-                    else
-                    {
-                        for (int j = i; j < n; j++)
-                        {
-                            slotLat[j] = cursor + rMaxFt + (j - i) * step;
-                            slotVert[j] = floorFt + rFt[j];
-                        }
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                // Flat: satu baris. Spaced = beri jeda satu diameter penuh (step).
-                double gap = spaced ? step : 0.0;
-                double x = availLeftFt + rMaxFt;
-                for (int i = 0; i < n; i++)
-                {
-                    slotLat[i] = x;
-                    slotVert[i] = floorFt + rFt[i];
-                    x += step + gap;
-                }
-            }
         }
 
         private static Conduit CreateConduit(Document doc, ElementId typeId, ElementId levelId,

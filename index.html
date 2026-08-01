@@ -130,9 +130,56 @@
       #printReportArea .border-b-4 { padding-bottom: 2mm !important; }
       #printReportArea .space-y-1\\.5 > * + * { margin-top: 1mm !important; }
     }
+    /* Gerbang login: selama belum masuk, seluruh isi aplikasi disembunyikan */
+    body.app-locked > *:not(#loginGate) { display: none !important; }
+    #loginGate { display: none; }
+    body.app-locked #loginGate { display: flex !important; }
   </style>
 </head>
-<body class="theme-transition bg-slate-50 text-slate-800 dark:bg-[#070a13] dark:text-slate-100 min-h-screen pb-24 font-sans selection:bg-orange-500 selection:text-white">
+<body class="theme-transition bg-slate-50 text-slate-800 dark:bg-[#070a13] dark:text-slate-100 min-h-screen pb-24 font-sans selection:bg-orange-500 selection:text-white app-locked">
+
+  <!-- ================= GERBANG LOGIN ================= -->
+  <div id="loginGate" class="fixed inset-0 z-[200] items-center justify-center p-4 bg-gradient-to-br from-amber-500 via-orange-500 to-red-600">
+    <div class="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-7 space-y-5">
+      <div class="text-center space-y-2">
+        <div class="w-16 h-16 mx-auto bg-gradient-to-tr from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center text-2xl text-white shadow-lg shadow-orange-500/25">
+          <i class="fa-solid fa-lock"></i>
+        </div>
+        <h1 class="text-lg font-black text-slate-900 dark:text-white">Cable Tray Project Hub</h1>
+        <p class="text-xs font-bold text-slate-400">Masuk untuk mengakses aplikasi</p>
+      </div>
+
+      <form id="loginForm" class="space-y-3" autocomplete="on">
+        <div class="space-y-1">
+          <label for="loginUser" class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Username</label>
+          <input id="loginUser" name="username" type="text" autocomplete="username" required
+                 class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-orange-500">
+        </div>
+        <div class="space-y-1">
+          <label for="loginPass" class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Password</label>
+          <div class="relative">
+            <input id="loginPass" name="password" type="password" autocomplete="current-password" required
+                   class="w-full px-4 py-2.5 pr-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-orange-500">
+            <button type="button" onclick="toggleLoginPassword()" title="Tampilkan/sembunyikan password"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg text-slate-400 hover:text-orange-500 flex items-center justify-center">
+              <i id="loginPassIcon" class="fa-solid fa-eye text-xs"></i>
+            </button>
+          </div>
+        </div>
+
+        <p id="loginError" class="hidden text-xs font-bold text-red-500 bg-red-500/10 rounded-xl px-3 py-2"></p>
+
+        <button id="loginSubmit" type="submit"
+                class="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-60">
+          <i class="fa-solid fa-right-to-bracket mr-1.5"></i> Masuk
+        </button>
+      </form>
+
+      <p class="text-[10px] leading-relaxed text-slate-400 text-center">
+        Akun dikelola admin lewat menu Profil. Lupa password? Hubungi admin.
+      </p>
+    </div>
+  </div>
 
   <!-- ================= HEADER UTAMA (Warm Orange Gradient) ================= -->
   <header class="relative overflow-hidden bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 text-white pb-14 pt-6 px-4 md:px-8 rounded-b-[2rem] shadow-xl no-print">
@@ -161,13 +208,13 @@
           <button id="btnLangEN" onclick="setLanguage('EN')" class="px-2.5 py-1 rounded transition-all text-white/70 hover:text-white">EN</button>
         </div>
 
-        <!-- Switch Peran (Admin / Guest) -->
-        <div class="flex bg-white/10 rounded-lg p-0.5 text-xs font-bold border border-white/10">
-          <button id="btnRoleGuest" onclick="switchRole('Guest')" class="px-3 py-1 rounded-md transition-all">
-            <i class="fa-solid fa-user-tag mr-1"></i><span data-i18n="role-guest">Guest</span>
-          </button>
-          <button id="btnRoleAdmin" onclick="switchRole('Admin')" class="px-3 py-1 rounded-md transition-all">
-            <i class="fa-solid fa-user-shield mr-1"></i><span data-i18n="role-admin">Admin</span>
+        <!-- Akun yang sedang masuk + tombol keluar -->
+        <div class="flex items-center bg-white/10 rounded-lg p-0.5 text-xs font-bold border border-white/10">
+          <span class="px-3 py-1 flex items-center gap-1.5 max-w-[9rem] truncate">
+            <i class="fa-solid fa-user-shield"></i><span id="headerUserLabel" class="truncate">-</span>
+          </span>
+          <button onclick="logout()" title="Keluar" class="px-2.5 py-1 rounded-md hover:bg-white/20 transition-all">
+            <i class="fa-solid fa-right-from-bracket"></i>
           </button>
         </div>
 
@@ -652,15 +699,55 @@
         </div>
 
         <div class="space-y-3 border-t border-slate-100 dark:border-slate-800/80 pt-4">
-          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Pilih Role Pengguna Aplikasi</label>
           <div class="grid grid-cols-2 gap-3">
-            <button type="button" onclick="switchRole('Guest')" class="py-2.5 rounded-xl border-2 border-orange-500/20 hover:border-orange-500 text-xs font-black transition-all">
-              <i class="fa-solid fa-user-tag mr-1.5"></i> Guest Mode
+            <button type="button" onclick="changeOwnPassword()" class="py-2.5 rounded-xl border-2 border-orange-500/20 hover:border-orange-500 text-xs font-black transition-all">
+              <i class="fa-solid fa-key mr-1.5"></i> Ganti Password
             </button>
-            <button type="button" onclick="switchRole('Admin')" class="py-2.5 rounded-xl border-2 border-orange-500/20 hover:border-orange-500 text-xs font-black transition-all">
-              <i class="fa-solid fa-user-shield mr-1.5"></i> Admin Mode
+            <button type="button" onclick="logout()" class="py-2.5 rounded-xl border-2 border-red-500/20 hover:border-red-500 text-red-500 text-xs font-black transition-all">
+              <i class="fa-solid fa-right-from-bracket mr-1.5"></i> Keluar
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- ===== Manajemen User (hanya tampil untuk admin) ===== -->
+      <div id="adminUserPanel" class="hidden max-w-xl mx-auto bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-6 shadow-sm space-y-5">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-black flex items-center gap-2">
+              <i class="fa-solid fa-users-gear text-orange-500"></i> Manajemen User
+            </h3>
+            <p class="text-[10px] font-bold text-slate-400 mt-0.5">Tambah, nonaktifkan, atau hapus akses pengguna</p>
+          </div>
+          <button type="button" onclick="refreshUserList()" title="Muat ulang"
+                  class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-orange-500 text-xs flex items-center justify-center transition-colors shrink-0">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+
+        <form id="addUserForm" onsubmit="addNewUser(event)" class="bg-slate-50 dark:bg-slate-950/50 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl space-y-3">
+          <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Tambah User Baru</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input id="newUserName" type="text" placeholder="Username" autocomplete="off"
+                   class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500">
+            <input id="newUserPass" type="text" placeholder="Password" autocomplete="new-password"
+                   class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500">
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="newUserRole"
+                    class="flex-grow px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold focus:outline-none focus:border-orange-500">
+              <option value="user">User (hanya pakai aplikasi)</option>
+              <option value="admin">Admin (bisa kelola user &amp; katalog)</option>
+            </select>
+            <button type="submit" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black rounded-xl active:scale-95 transition-all shrink-0">
+              <i class="fa-solid fa-plus mr-1"></i> Tambah
+            </button>
+          </div>
+        </form>
+
+        <div class="space-y-2">
+          <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Daftar User</h4>
+          <div id="userListBox" class="space-y-2"></div>
         </div>
       </div>
 
@@ -1123,6 +1210,351 @@
       }).then(res => res.json());
     }
 
+    // ================= GERBANG LOGIN & SESI =================
+    // Akun disimpan di sheet "Users" (Google Sheets) — password TIDAK pernah
+    // disimpan apa adanya, hanya SHA-256 bergaram. Lihat Code.gs/Setup.gs.
+    //
+    // ⚠ BATAS KEMAMPUAN: ini aplikasi statis, jadi gerbang ini menyaring akses
+    // orang biasa, BUKAN pengaman tingkat server. Siapa pun yang paham devtools
+    // masih bisa melewati tampilannya, dan endpoint API Apps Script sendiri
+    // masih terbuka (dipakai plugin Revit). Jangan taruh data rahasia di sini.
+    const SESSION_KEY = 'cth_session';
+    const OFFLINE_KEY_PREFIX = 'cth_offline_';
+    let authUser = null; // { username, role, token, expiresAt }
+
+    async function sha256Hex(text) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function loadSession() {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (!s || !s.token || !s.expiresAt || s.expiresAt < Date.now()) {
+          localStorage.removeItem(SESSION_KEY);
+          return null;
+        }
+        return s;
+      } catch (e) { return null; }
+    }
+
+    function saveSession(s) {
+      authUser = s;
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {}
+    }
+
+    function showLoginError(msg) {
+      const el = document.getElementById('loginError');
+      el.innerText = msg;
+      el.classList.remove('hidden');
+    }
+
+    function toggleLoginPassword() {
+      const inp = document.getElementById('loginPass');
+      const icon = document.getElementById('loginPassIcon');
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      icon.className = show ? 'fa-solid fa-eye-slash text-xs' : 'fa-solid fa-eye text-xs';
+    }
+
+    /**
+     * Login OFFLINE: dipakai hanya bila API tak terjangkau. Cocokkan dengan
+     * salt+hash yang tersimpan di perangkat ini dari login online terakhir.
+     */
+    async function tryOfflineLogin(username, password) {
+      const raw = localStorage.getItem(OFFLINE_KEY_PREFIX + username.toLowerCase());
+      if (!raw) return null;
+      try {
+        const c = JSON.parse(raw);
+        const hash = await sha256Hex(c.salt + '|' + password);
+        if (hash !== c.hash) return null;
+        return {
+          username: c.username || username,
+          role: c.role || 'user',
+          token: '',
+          offline: true,
+          expiresAt: Date.now() + 6 * 3600 * 1000
+        };
+      } catch (e) { return null; }
+    }
+
+    async function handleLogin(ev) {
+      if (ev) ev.preventDefault();
+      const btn = document.getElementById('loginSubmit');
+      const username = document.getElementById('loginUser').value.trim();
+      const password = document.getElementById('loginPass').value;
+      document.getElementById('loginError').classList.add('hidden');
+
+      if (!username || !password) { showLoginError('Username dan password wajib diisi.'); return; }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Memeriksa...';
+
+      try {
+        let res = null;
+        try {
+          res = await apiPost('login', { username: username, password: password });
+        } catch (netErr) {
+          res = null; // API tak terjangkau -> coba jalur offline
+        }
+
+        if (res && res.success) {
+          // Simpan kredensial terverifikasi untuk login offline berikutnya.
+          if (res.offline && res.offline.salt) {
+            try {
+              localStorage.setItem(OFFLINE_KEY_PREFIX + res.user.username.toLowerCase(),
+                JSON.stringify({
+                  username: res.user.username, role: res.user.role,
+                  salt: res.offline.salt, hash: res.offline.hash
+                }));
+            } catch (e) {}
+          }
+          saveSession({
+            username: res.user.username, role: res.user.role,
+            token: res.token, expiresAt: res.expiresAt || (Date.now() + 6 * 3600 * 1000)
+          });
+          unlockApp();
+          return;
+        }
+
+        if (res && res.error) { showLoginError(res.error); return; }
+
+        // Tidak ada jawaban dari server -> jalur offline
+        const off = await tryOfflineLogin(username, password);
+        if (off) {
+          saveSession(off);
+          unlockApp();
+          showToast('Masuk mode OFFLINE (server tidak terjangkau).', 'warning');
+          return;
+        }
+        showLoginError('Server tidak terjangkau dan belum ada data login offline di perangkat ini.');
+      } catch (err) {
+        showLoginError('Gagal login: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-right-to-bracket mr-1.5"></i> Masuk';
+      }
+    }
+
+    function logout() {
+      if (!confirm('Keluar dari aplikasi?')) return;
+      const token = authUser && authUser.token;
+      if (token) { try { apiPost('logout', { token: token }); } catch (e) {} }
+      localStorage.removeItem(SESSION_KEY);
+      authUser = null;
+      location.reload();
+    }
+
+    /** Membuka aplikasi setelah sesi sah, lalu menjalankan inisialisasi. */
+    function unlockApp() {
+      document.body.classList.remove('app-locked');
+      document.getElementById('loginPass').value = '';
+      applyAuthToUi();
+      if (!appStarted) startApp();
+    }
+
+    /** Menyesuaikan tampilan dengan akun yang sedang masuk. */
+    function applyAuthToUi() {
+      if (!authUser) return;
+      currentRole = authUser.role === 'admin' ? 'Admin' : 'Guest';
+      const isAdmin = currentRole === 'Admin';
+
+      const nameEl = document.getElementById('profileNameDisplay');
+      const badgeEl = document.getElementById('profileRoleBadge');
+      const authIndicator = document.getElementById('authKatalogIndicator');
+      const who = document.getElementById('headerUserLabel');
+
+      if (who) who.innerText = authUser.username + (authUser.offline ? ' (offline)' : '');
+      if (nameEl) nameEl.innerText = authUser.username;
+      if (badgeEl) badgeEl.innerText = isAdmin ? 'Peran: Administrator' : 'Peran: User';
+      if (authIndicator) {
+        authIndicator.innerHTML = isAdmin
+          ? '<i class="fa-solid fa-circle-check"></i> Aktif'
+          : '<i class="fa-solid fa-circle-xmark"></i> Terkunci';
+      }
+
+      ['btnAddNewCable', 'btnAddNewTray'].forEach(id => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        if (isAdmin) { b.removeAttribute('disabled'); b.classList.remove('opacity-50'); }
+        else { b.setAttribute('disabled', 'true'); b.classList.add('opacity-50'); }
+      });
+
+      const adminPanel = document.getElementById('adminUserPanel');
+      if (adminPanel) adminPanel.classList.toggle('hidden', !isAdmin);
+
+      if (activeTab === 'catalog') renderKabelCatalog();
+      if (activeTab === 'tray-templates') renderTrayTemplates();
+    }
+
+    // ================= MANAJEMEN USER (khusus admin) =================
+    function requireAdminOnline() {
+      if (!authUser || authUser.role !== 'admin') {
+        showToast('Hanya admin yang boleh mengelola user.', 'error');
+        return false;
+      }
+      if (!authUser.token) {
+        showToast('Manajemen user butuh koneksi ke database (sedang mode offline).', 'warning');
+        return false;
+      }
+      return true;
+    }
+
+    function handleUserApiError(res) {
+      if (res && res.expired) {
+        showToast('Sesi berakhir, silakan login ulang.', 'error');
+        localStorage.removeItem(SESSION_KEY);
+        setTimeout(() => location.reload(), 1200);
+        return true;
+      }
+      return false;
+    }
+
+    async function refreshUserList() {
+      if (!authUser || authUser.role !== 'admin') return;
+      const box = document.getElementById('userListBox');
+      if (!box) return;
+
+      if (!authUser.token) {
+        box.innerHTML = '<p class="text-xs font-bold text-amber-500">Mode offline — daftar user tidak bisa dimuat.</p>';
+        return;
+      }
+      box.innerHTML = '<p class="text-xs font-bold text-slate-400"><i class="fa-solid fa-circle-notch fa-spin"></i> Memuat daftar user...</p>';
+
+      try {
+        const res = await apiPost('listUsers', { token: authUser.token });
+        if (handleUserApiError(res)) return;
+        if (!res || !res.success) {
+          box.innerHTML = `<p class="text-xs font-bold text-red-500">${(res && res.error) || 'Gagal memuat daftar user.'}</p>`;
+          return;
+        }
+        if (!res.users || res.users.length === 0) {
+          box.innerHTML = '<p class="text-xs font-bold text-slate-400">Belum ada user terdaftar.</p>';
+          return;
+        }
+        box.innerHTML = res.users.map(u => {
+          const isSelf = u.username.toLowerCase() === authUser.username.toLowerCase();
+          const roleChip = u.role === 'admin'
+            ? '<span class="px-2 py-0.5 rounded-md bg-orange-500 text-white text-[10px] font-black">ADMIN</span>'
+            : '<span class="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-black">USER</span>';
+          const statusChip = u.aktif
+            ? '<span class="text-emerald-500 text-[10px] font-black">AKTIF</span>'
+            : '<span class="text-red-500 text-[10px] font-black">NONAKTIF</span>';
+          return `
+            <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+              <div class="min-w-0">
+                <p class="text-xs font-black truncate">${escapeHtml(u.username)}${isSelf ? ' <span class="text-[10px] text-slate-400">(Anda)</span>' : ''}</p>
+                <p class="text-[10px] font-bold text-slate-400 truncate">Login terakhir: ${escapeHtml(u.terakhirLogin || '-')}</p>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                ${roleChip}${statusChip}
+                <button type="button" title="Ganti password" onclick="promptResetPassword('${escapeHtml(u.username)}')"
+                        class="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white text-xs flex items-center justify-center transition-colors"><i class="fa-solid fa-key"></i></button>
+                <button type="button" title="${u.aktif ? 'Nonaktifkan' : 'Aktifkan'}" onclick="toggleUserActive('${escapeHtml(u.username)}', ${u.aktif ? 'false' : 'true'})"
+                        class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white text-xs flex items-center justify-center transition-colors"><i class="fa-solid fa-power-off"></i></button>
+                <button type="button" title="Hapus user" onclick="removeUser('${escapeHtml(u.username)}')"
+                        class="w-7 h-7 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-xs flex items-center justify-center transition-colors"><i class="fa-solid fa-trash-can"></i></button>
+              </div>
+            </div>`;
+        }).join('');
+      } catch (err) {
+        box.innerHTML = '<p class="text-xs font-bold text-red-500">Gagal menghubungi server.</p>';
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function addNewUser(ev) {
+      if (ev) ev.preventDefault();
+      if (!requireAdminOnline()) return;
+
+      const username = document.getElementById('newUserName').value.trim();
+      const password = document.getElementById('newUserPass').value;
+      const role = document.getElementById('newUserRole').value;
+      if (!username || !password) { showToast('Username dan password wajib diisi.', 'error'); return; }
+
+      const res = await apiPost('addUser', {
+        token: authUser.token, username: username, password: password, role: role
+      }).catch(() => null);
+
+      if (handleUserApiError(res)) return;
+      if (!res || !res.success) { showToast((res && res.error) || 'Gagal menambah user.', 'error'); return; }
+
+      document.getElementById('newUserName').value = '';
+      document.getElementById('newUserPass').value = '';
+      showToast(`User "${username}" berhasil ditambahkan.`, 'success');
+      refreshUserList();
+    }
+
+    async function promptResetPassword(username) {
+      if (!requireAdminOnline()) return;
+      const pass = prompt(`Password baru untuk "${username}" (minimal 4 karakter):`);
+      if (pass === null) return;
+      if (pass.length < 4) { showToast('Password minimal 4 karakter.', 'error'); return; }
+
+      const res = await apiPost('changePassword', {
+        token: authUser.token, username: username, password: pass
+      }).catch(() => null);
+
+      if (handleUserApiError(res)) return;
+      if (!res || !res.success) { showToast((res && res.error) || 'Gagal mengganti password.', 'error'); return; }
+
+      // Kredensial offline lama sudah tidak sahih setelah password berganti.
+      localStorage.removeItem(OFFLINE_KEY_PREFIX + username.toLowerCase());
+      showToast(`Password "${username}" diperbarui.`, 'success');
+    }
+
+    async function toggleUserActive(username, aktif) {
+      if (!requireAdminOnline()) return;
+      const res = await apiPost('setUserActive', {
+        token: authUser.token, username: username, aktif: aktif
+      }).catch(() => null);
+
+      if (handleUserApiError(res)) return;
+      if (!res || !res.success) { showToast((res && res.error) || 'Gagal mengubah status user.', 'error'); return; }
+      showToast(`User "${username}" ${aktif ? 'diaktifkan' : 'dinonaktifkan'}.`, 'success');
+      refreshUserList();
+    }
+
+    async function removeUser(username) {
+      if (!requireAdminOnline()) return;
+      if (!confirm(`Hapus user "${username}" secara permanen?`)) return;
+
+      const res = await apiPost('deleteUser', { token: authUser.token, username: username })
+        .catch(() => null);
+
+      if (handleUserApiError(res)) return;
+      if (!res || !res.success) { showToast((res && res.error) || 'Gagal menghapus user.', 'error'); return; }
+
+      localStorage.removeItem(OFFLINE_KEY_PREFIX + username.toLowerCase());
+      showToast(`User "${username}" dihapus.`, 'success');
+      refreshUserList();
+    }
+
+    async function changeOwnPassword() {
+      if (!authUser) return;
+      if (!authUser.token) { showToast('Butuh koneksi database (sedang mode offline).', 'warning'); return; }
+      const pass = prompt('Password baru untuk akun Anda (minimal 4 karakter):');
+      if (pass === null) return;
+      if (pass.length < 4) { showToast('Password minimal 4 karakter.', 'error'); return; }
+
+      const res = await apiPost('changePassword', {
+        token: authUser.token, username: authUser.username, password: pass
+      }).catch(() => null);
+
+      if (handleUserApiError(res)) return;
+      if (!res || !res.success) { showToast((res && res.error) || 'Gagal mengganti password.', 'error'); return; }
+
+      localStorage.removeItem(OFFLINE_KEY_PREFIX + authUser.username.toLowerCase());
+      showToast('Password Anda berhasil diganti.', 'success');
+    }
+
     // ================= MODAL CONNECT KE REVIT =================
     function openRevitModal() {
       const body = document.getElementById('revitModalBody');
@@ -1333,11 +1765,10 @@
     }
 
     // Inisialisasi awal sistem
+    let appStarted = false;
+
     window.onload = function() {
-      const options = { year: 'numeric', month: 'long', day: 'numeric' };
-      document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('id-ID', options);
-      
-      // Load Tema Default
+      // Tema & bahasa disiapkan lebih dulu supaya halaman login ikut bertema
       if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
         document.getElementById('themeIcon').className = "fa-solid fa-sun text-sm";
@@ -1349,16 +1780,36 @@
       // Load Preferred Language
       setLanguage(currentLanguage);
 
+      document.getElementById('loginForm').addEventListener('submit', handleLogin);
+
+      // Sesi masih berlaku -> langsung buka; kalau tidak, tampilkan gerbang login
+      const sess = loadSession();
+      if (sess) {
+        authUser = sess;
+        unlockApp();
+      } else {
+        document.body.classList.add('app-locked');
+        document.getElementById('loginUser').focus();
+      }
+    };
+
+    /** Inisialisasi aplikasi — hanya dipanggil setelah login berhasil. */
+    function startApp() {
+      appStarted = true;
+
+      const options = { year: 'numeric', month: 'long', day: 'numeric' };
+      document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('id-ID', options);
+
       // Ambil data dari Apps Script backend (jika tersedia)
       loadInitialData();
-      
+
       // Render grouped cable list dan tambah 1 baris awal
       renderCableGroups();
       addCableToGroup(1);
 
       // Inisialisasi Event Listener Canvas Drag-and-Drop
       setupCanvasDragListeners();
-    };
+    }
 
     /**
      * Memanggil backend code.gs untuk inisiasi data sheet
@@ -1542,42 +1993,15 @@
         activeNavBtn.className = "flex flex-col md:flex-row items-center gap-1 px-3 py-1.5 text-xs font-black rounded-xl transition-all text-orange-500 bg-orange-50 dark:bg-orange-950/20";
       }
 
-      if (tabId === 'history') { renderHistoryList(true); } 
-      else if (tabId === 'catalog') { renderKabelCatalog(); } 
+      if (tabId === 'history') { renderHistoryList(true); }
+      else if (tabId === 'catalog') { renderKabelCatalog(); }
       else if (tabId === 'tray-templates') { renderTrayTemplates(); }
+      else if (tabId === 'profile' && authUser && authUser.role === 'admin') { refreshUserList(); }
     }
 
-    function switchRole(role) {
-      if (role === 'Admin') {
-        const pass = prompt('Masukkan password Admin:');
-        if (pass === null) return;
-        if (pass !== '0009') { showToast('Password salah!', 'error'); return; }
-      }
-      currentRole = role;
-      const badge = document.getElementById('profileRoleBadge');
-      const name = document.getElementById('profileNameDisplay');
-      const authIndicator = document.getElementById('authKatalogIndicator');
-
-      if (role === 'Admin') {
-        name.innerText = "System Administrator (Full)";
-        badge.innerText = "Peran: Administrator";
-        authIndicator.innerHTML = `<i class="fa-solid fa-circle-check"></i> Aktif`;
-        document.getElementById('btnAddNewCable').removeAttribute('disabled');
-        document.getElementById('btnAddNewCable').classList.remove('opacity-50');
-        document.getElementById('btnAddNewTray').removeAttribute('disabled');
-        document.getElementById('btnAddNewTray').classList.remove('opacity-50');
-      } else {
-        name.innerText = "Guest Engineer";
-        badge.innerText = "Peran: Guest";
-        authIndicator.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Terkunci`;
-        document.getElementById('btnAddNewCable').setAttribute('disabled', 'true');
-        document.getElementById('btnAddNewCable').classList.add('opacity-50');
-        document.getElementById('btnAddNewTray').setAttribute('disabled', 'true');
-        document.getElementById('btnAddNewTray').classList.add('opacity-50');
-      }
-      if (activeTab === 'catalog') renderKabelCatalog();
-      if (activeTab === 'tray-templates') renderTrayTemplates();
-    }
+    // Peran TIDAK bisa lagi ditukar sendiri dari UI — dulu cukup menebak
+    // password di prompt untuk jadi Admin, yang membuat gerbang login percuma.
+    // Sekarang peran ditentukan akun yang login (lihat applyAuthToUi).
 
     function toggleTheme() {
       const html = document.documentElement;

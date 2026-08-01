@@ -291,3 +291,91 @@ function upgradeSheets() {
     SpreadsheetApp.flush();
   }
 }
+/**
+ * ====================================================================
+ * INISIALISASI SHEET "Users" (GERBANG LOGIN)
+ * ====================================================================
+ * Jalankan initUsers() SEKALI untuk membuat sheet Users + akun awal.
+ *
+ * ⚠ PENTING — KEAMANAN:
+ * Daftar SEED_USERS di bawah sengaja DIKOSONGKAN di repo GitHub.
+ * Password TIDAK BOLEH ikut ter-commit: sekali masuk riwayat git, ia
+ * tersimpan selamanya walau baris-nya dihapus belakangan.
+ *
+ * Cara pakai:
+ *   1. Buka editor Apps Script Anda (script.google.com) -> file Setup.gs
+ *   2. Isi SEED_USERS dengan akun yang diinginkan, contoh:
+ *        var SEED_USERS = [
+ *          { username: "admin", password: "....", role: "admin" },
+ *          { username: "user1", password: "....", role: "user"  }
+ *        ];
+ *   3. Jalankan initUsers() sekali -> sheet Users terisi (HANYA hash,
+ *      password asli tidak pernah disimpan di spreadsheet).
+ *   4. KOSONGKAN lagi SEED_USERS di editor supaya password tidak
+ *      tertinggal di sana. Selanjutnya tambah user lewat dashboard admin.
+ *
+ * Menjalankan ulang initUsers() TIDAK menghapus user yang sudah ada —
+ * hanya menambah yang belum terdaftar.
+ */
+var SEED_USERS = [
+  // { username: "admin", password: "ISI_DI_EDITOR_ANDA", role: "admin" }
+];
+
+function initUsers() {
+  var sheet = ensureUsersSheet_();
+
+  if (!SEED_USERS || SEED_USERS.length === 0) {
+    throw new Error(
+      "SEED_USERS masih kosong. Isi dulu daftar akun di bagian atas fungsi " +
+      "ini (di editor Apps Script Anda, JANGAN di repo GitHub), lalu " +
+      "jalankan initUsers() lagi.");
+  }
+
+  var existing = {};
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0]) existing[values[i][0].toString().toLowerCase()] = true;
+  }
+
+  var added = 0;
+  for (var j = 0; j < SEED_USERS.length; j++) {
+    var u = SEED_USERS[j];
+    if (!u || !u.username || !u.password) continue;
+    var uname = u.username.toString().trim();
+    if (existing[uname.toLowerCase()]) continue;
+
+    var salt = Utilities.getUuid().replace(/-/g, "");
+    sheet.appendRow([
+      uname,
+      hashPassword_(u.password, salt),
+      salt,
+      (u.role === "admin" ? "admin" : "user"),
+      true,
+      new Date(),
+      ""
+    ]);
+    added++;
+  }
+
+  SpreadsheetApp.flush();
+  Logger.log("initUsers selesai. Akun baru ditambahkan: " + added);
+  return added;
+}
+
+/**
+ * Membuat sheet Users beserta headernya bila belum ada (tanpa menghapus data).
+ */
+function ensureUsersSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Users");
+  if (!sheet) {
+    sheet = ss.insertSheet("Users");
+    var header = ["Username", "Password_Hash", "Salt", "Role", "Aktif",
+                  "Dibuat_Pada", "Terakhir_Login"];
+    sheet.appendRow(header);
+    sheet.getRange(1, 1, 1, header.length)
+      .setFontWeight("bold").setBackground("#FF9800").setFontColor("#FFFFFF");
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}

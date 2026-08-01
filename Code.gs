@@ -43,6 +43,14 @@ function doPost(e) {
     if (body.action === "deleteSimulation") {
       return jsonOutput(deleteSimulation(body.data));
     }
+    // ---- Gerbang login & manajemen user ----
+    if (body.action === "login")          return jsonOutput(apiLogin(body.data));
+    if (body.action === "logout")         return jsonOutput(apiLogout(body.data));
+    if (body.action === "listUsers")      return jsonOutput(apiListUsers(body.data));
+    if (body.action === "addUser")        return jsonOutput(apiAddUser(body.data));
+    if (body.action === "deleteUser")     return jsonOutput(apiDeleteUser(body.data));
+    if (body.action === "setUserActive")  return jsonOutput(apiSetUserActive(body.data));
+    if (body.action === "changePassword") return jsonOutput(apiChangePassword(body.data));
     return jsonOutput({ success: false, error: "Unknown action: " + body.action });
   } catch (error) {
     return jsonOutput({ success: false, error: error.toString() });
@@ -340,6 +348,303 @@ function saveSimulation(simulation) {
 
     SpreadsheetApp.flush();
     return { success: true, id: simId, timestamp: timestamp };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * ====================================================================
+ * GERBANG LOGIN & MANAJEMEN USER
+ * ====================================================================
+ * Sumber data: sheet "Users" (dibuat oleh initUsers() di Setup.gs).
+ * Password TIDAK PERNAH disimpan apa adanya — hanya SHA-256 bergaram
+ * (salt acak per user).
+ *
+ * Endpoint (POST body {action, data}):
+ *   login          {username, password}          -> {token, user, expiresAt, offline}
+ *   logout         {token}
+ *   listUsers      {token}                        (admin)
+ *   addUser        {token, username, password, role}   (admin)
+ *   deleteUser     {token, username}              (admin)
+ *   setUserActive  {token, username, aktif}       (admin)
+ *   changePassword {token, username, password}    (admin, atau user utk dirinya sendiri)
+ * ====================================================================
+ */
+
+var SESSION_TTL_SEC = 21600; // 6 jam
+
+function usersSheet_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Users");
+}
+
+function sha256Hex_(str) {
+  var raw = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, str, Utilities.Charset.UTF_8);
+  var out = "";
+  for (var i = 0; i < raw.length; i++) {
+    out += ("0" + (raw[i] & 0xFF).toString(16)).slice(-2);
+  }
+  return out;
+}
+
+/** Hash password bergaram. Formula ini HARUS sama persis dengan sisi web. */
+function hashPassword_(password, salt) {
+  return sha256Hex_(salt + "|" + password);
+}
+
+/** Membaca seluruh user dari sheet (termasuk nomor baris untuk update). */
+function readUsers_() {
+  var sheet = usersSheet_();
+  if (!sheet) return [];
+  var values = sheet.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    list.push({
+      row: i + 1,
+      username: r[0].toString(),
+      hash: r[1] ? r[1].toString() : "",
+      salt: r[2] ? r[2].toString() : "",
+      role: r[3] ? r[3].toString() : "user",
+      aktif: r[4] === "" || r[4] === null || r[4] === undefined ? true : (r[4] === true || r[4].toString().toLowerCase() === "true"),
+      dibuat: r[5] || "",
+      terakhirLogin: r[6] || ""
+    });
+  }
+  return list;
+}
+
+function findUser_(username) {
+  if (!username) return null;
+  var target = username.toString().trim().toLowerCase();
+  var users = readUsers_();
+  for (var i = 0; i < users.length; i++) {
+    if (users[i].username.toLowerCase() === target) return users[i];
+  }
+  return null;
+}
+
+/** Perbandingan hash yang tidak bocor lewat waktu eksekusi. */
+function safeEquals_(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= (a.charCodeAt(i) ^ b.charCodeAt(i));
+  return diff === 0;
+}
+
+function apiLogin(data) {
+  try {
+    var username = data && data.username ? data.username.toString().trim() : "";
+    var password = data && data.password ? data.password.toString() : "";
+    if (!username || !password) {
+      return { success: false, error: "Username dan password wajib diisi." };
+    }
+
+    var sheet = usersSheet_();
+    if (!sheet) {
+      return { success: false, error: "Sheet 'Users' belum ada. Jalankan initUsers() di Apps Script dahulu." };
+    }
+
+    var user = findUser_(username);
+    // Pesan sengaja disamakan supaya tidak membocorkan username mana yang ada.
+    var gagal = { success: false, error: "Username atau password salah." };
+    if (!user) return gagal;
+    if (!user.aktif) return { success: false, error: "Akun ini dinonaktifkan. Hubungi admin." };
+    if (!safeEquals_(hashPassword_(password, user.salt), user.hash)) return gagal;
+
+    var token = Utilities.getUuid().replace(/-/g, "") +
+                Utilities.getUuid().replace(/-/g, "");
+    var expiresAt = new Date().getTime() + SESSION_TTL_SEC * 1000;
+    CacheService.getScriptCache().put(
+      "sess_" + token,
+      JSON.stringify({ u: user.username, r: user.role, exp: expiresAt }),
+      SESSION_TTL_SEC);
+
+    try {
+      sheet.getRange(user.row, 7).setValue(new Date());
+      SpreadsheetApp.flush();
+    } catch (errLog) { /* pencatatan waktu login bukan hal kritis */ }
+
+    return {
+      success: true,
+      token: token,
+      expiresAt: expiresAt,
+      user: { username: user.username, role: user.role },
+      // Dipakai web untuk login OFFLINE di perangkat ini bila API tak terjangkau.
+      offline: { salt: user.salt, hash: user.hash }
+    };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+function apiLogout(data) {
+  try {
+    var token = data && data.token ? data.token.toString() : "";
+    if (token) CacheService.getScriptCache().remove("sess_" + token);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+/** Mengembalikan {username, role} bila token masih sah, selain itu null. */
+function sessionUser_(token) {
+  if (!token) return null;
+  var raw = CacheService.getScriptCache().get("sess_" + token.toString());
+  if (!raw) return null;
+  try {
+    var s = JSON.parse(raw);
+    if (!s || !s.exp || s.exp < new Date().getTime()) return null;
+    return { username: s.u, role: s.r };
+  } catch (err) {
+    return null;
+  }
+}
+
+function requireAdmin_(data) {
+  var sess = sessionUser_(data && data.token);
+  if (!sess) return { ok: false, res: { success: false, error: "Sesi berakhir. Silakan login ulang.", expired: true } };
+  if (sess.role !== "admin") return { ok: false, res: { success: false, error: "Hanya admin yang boleh melakukan ini." } };
+  return { ok: true, sess: sess };
+}
+
+function apiListUsers(data) {
+  try {
+    var guard = requireAdmin_(data);
+    if (!guard.ok) return guard.res;
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var tz = ss.getSpreadsheetTimeZone();
+    var users = readUsers_().map(function (u) {
+      var last = "";
+      if (u.terakhirLogin instanceof Date) {
+        last = Utilities.formatDate(u.terakhirLogin, tz, "dd/MM/yyyy HH:mm");
+      } else if (u.terakhirLogin) {
+        last = u.terakhirLogin.toString();
+      }
+      // Hash & salt sengaja TIDAK dikirim ke daftar user.
+      return { username: u.username, role: u.role, aktif: u.aktif, terakhirLogin: last };
+    });
+    return { success: true, users: users };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+function apiAddUser(data) {
+  try {
+    var guard = requireAdmin_(data);
+    if (!guard.ok) return guard.res;
+
+    var username = data.username ? data.username.toString().trim() : "";
+    var password = data.password ? data.password.toString() : "";
+    var role = data.role === "admin" ? "admin" : "user";
+
+    if (!username || !password) return { success: false, error: "Username dan password wajib diisi." };
+    if (!/^[A-Za-z0-9._-]{3,30}$/.test(username)) {
+      return { success: false, error: "Username 3-30 karakter, hanya huruf/angka/titik/garis." };
+    }
+    if (password.length < 4) return { success: false, error: "Password minimal 4 karakter." };
+    if (findUser_(username)) return { success: false, error: "Username '" + username + "' sudah dipakai." };
+
+    var sheet = usersSheet_();
+    if (!sheet) return { success: false, error: "Sheet 'Users' belum ada. Jalankan initUsers() dahulu." };
+
+    var salt = Utilities.getUuid().replace(/-/g, "");
+    sheet.appendRow([username, hashPassword_(password, salt), salt, role, true, new Date(), ""]);
+    SpreadsheetApp.flush();
+    return { success: true, username: username, role: role };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+function apiDeleteUser(data) {
+  try {
+    var guard = requireAdmin_(data);
+    if (!guard.ok) return guard.res;
+
+    var username = data.username ? data.username.toString().trim() : "";
+    if (!username) return { success: false, error: "Username wajib diisi." };
+    if (username.toLowerCase() === guard.sess.username.toLowerCase()) {
+      return { success: false, error: "Tidak bisa menghapus akun yang sedang dipakai." };
+    }
+
+    var user = findUser_(username);
+    if (!user) return { success: false, error: "User '" + username + "' tidak ditemukan." };
+
+    // Cegah kehilangan admin terakhir supaya tidak terkunci dari dashboard.
+    if (user.role === "admin" && countActiveAdmins_() <= 1) {
+      return { success: false, error: "Ini admin aktif terakhir — tidak boleh dihapus." };
+    }
+
+    usersSheet_().deleteRow(user.row);
+    SpreadsheetApp.flush();
+    return { success: true, username: username };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+function countActiveAdmins_() {
+  var users = readUsers_();
+  var n = 0;
+  for (var i = 0; i < users.length; i++) {
+    if (users[i].role === "admin" && users[i].aktif) n++;
+  }
+  return n;
+}
+
+function apiSetUserActive(data) {
+  try {
+    var guard = requireAdmin_(data);
+    if (!guard.ok) return guard.res;
+
+    var username = data.username ? data.username.toString().trim() : "";
+    var aktif = data.aktif === true || data.aktif === "true";
+    var user = findUser_(username);
+    if (!user) return { success: false, error: "User '" + username + "' tidak ditemukan." };
+    if (username.toLowerCase() === guard.sess.username.toLowerCase() && !aktif) {
+      return { success: false, error: "Tidak bisa menonaktifkan akun yang sedang dipakai." };
+    }
+    if (!aktif && user.role === "admin" && countActiveAdmins_() <= 1) {
+      return { success: false, error: "Ini admin aktif terakhir — tidak boleh dinonaktifkan." };
+    }
+
+    usersSheet_().getRange(user.row, 5).setValue(aktif);
+    SpreadsheetApp.flush();
+    return { success: true, username: user.username, aktif: aktif };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+function apiChangePassword(data) {
+  try {
+    var sess = sessionUser_(data && data.token);
+    if (!sess) return { success: false, error: "Sesi berakhir. Silakan login ulang.", expired: true };
+
+    var username = data.username ? data.username.toString().trim() : sess.username;
+    var password = data.password ? data.password.toString() : "";
+    if (password.length < 4) return { success: false, error: "Password minimal 4 karakter." };
+
+    // User biasa hanya boleh mengganti password miliknya sendiri.
+    if (sess.role !== "admin" && username.toLowerCase() !== sess.username.toLowerCase()) {
+      return { success: false, error: "Hanya admin yang boleh mengganti password user lain." };
+    }
+
+    var user = findUser_(username);
+    if (!user) return { success: false, error: "User '" + username + "' tidak ditemukan." };
+
+    var salt = Utilities.getUuid().replace(/-/g, "");
+    var sheet = usersSheet_();
+    sheet.getRange(user.row, 2).setValue(hashPassword_(password, salt));
+    sheet.getRange(user.row, 3).setValue(salt);
+    SpreadsheetApp.flush();
+    return { success: true, username: user.username };
   } catch (error) {
     return { success: false, error: error.toString() };
   }

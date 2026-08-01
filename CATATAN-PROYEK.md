@@ -194,6 +194,37 @@ dialog Pull**
   sendiri sebagai ambang), baris dasar tiap kelompok tetap dianggap "duduk di
   lantai tray" yang sama untuk semua kelompok.
 
+**Ronde 11 (1 Agu): susunan Revit ≠ web (tercampur pola Flat Spaced)**
+- Laporan: web di-set **Trefoil**, tapi hasil Pull di Revit conduit
+  direnggangkan seragam seperti Flat Spaced (De) dan 3 conduit paling kanan
+  meluber KELUAR tray.
+- Akar masalah (`PullCommand.cs`): penataan lateral memakai
+  `stepFt = 2 * rMaxFt` — jarak antar-kolom SERAGAM sebesar OD conduit
+  **TERBESAR di jalur itu**, dipakai untuk SEMUA conduit tanpa peduli
+  ukurannya sendiri (`slotLat[s] = availLeft + rMax + off + i*stepFt`).
+  Jadi conduit kecil ikut diberi jarak sebesar conduit terbesar → persis
+  penampakan "Flat Spaced", dan total lebarnya membengkak jauh sehingga
+  barisan tumpah keluar tray. Tiap baris juga di-repack ulang dari tepi kiri
+  secara terpisah, jadi apex trefoil tak lagi sejajar di atas pasangan
+  dasarnya.
+- Fix: pola kanvas web di-REPLAY, bukan dihitung ulang per metode.
+  1. Per KELOMPOK kabel (satu jenis/diameter — satu kelompok trefoil selalu
+     sejenis), x & y diskala rasio OD-nyata/diameter kabel kelompok itu.
+     Karena serumpun memakai rasio SAMA, geometri internal tetap presisi:
+     apex trefoil tepat di tengah dua kabel dasar, kabel dasar bersentuhan
+     (jarak pusat = OD).
+  2. Kelompok berikutnya di-anchor menyambung dari ujung kanan kelompok
+     sebelumnya (jarak antar-kelompok dari web dipertahankan) supaya urutan
+     kiri→kanan tidak tertukar.
+  3. Bentrokan sisa di seam antar-kelompok diselesaikan dengan menggeser
+     SATU KELOMPOK UTUH (rigid) ke kanan sejauh yang perlu — besarnya eksak
+     dari geometri lingkaran `dx = √((ri+rj)² − dv²)` — jadi bentuk trefoil
+     tak ikut berubah.
+- Diverifikasi numerik memakai posisi asli dari kanvas web (Trefoil; NYY
+  4x120 ×9 + 4x35 ×6 + 4x300 ×3) dengan OD conduit di-snap ke trade size:
+  lebar terpakai **869,6 mm → 635,6 mm** (tray 600), nol pasangan tumpuk,
+  dan semua apex trefoil tepat di titik tengah pasangan dasarnya.
+
 **Belum diuji (kerjaan berikutnya):**
 -2. Uji ronde 10 di Revit: Pull jalur yang berisi campuran kabel besar+kecil
    (mis. trefoil) → cek conduit kabel kecil kini sejajar dasar, tidak melayang

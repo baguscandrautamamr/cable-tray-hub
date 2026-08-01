@@ -256,31 +256,62 @@ namespace CableTrayHub.Revit
                             if (rFt[s] > rMaxFt) rMaxFt = rFt[s];
                         }
 
-                        // Urutkan global menurut tinggi web (pos.Y) lalu kiri (pos.X);
-                        // slot tanpa posisi -> paling bawah, urut apa adanya.
+                        // Baris LOKAL per kelompok kabel (satu CableInfo = satu jenis/
+                        // diameter): pakai radius kabel itu SENDIRI sebagai ambang batas,
+                        // bukan radius kabel terbesar se-jalur. Kalau jalur ini campur
+                        // ukuran (mis. kabel besar + kabel kecil), ambang global yang
+                        // dulu dipakai (radius kabel terbesar) sering lebih besar dari
+                        // jarak dasar->apex trefoil kabel KECIL itu sendiri, sehingga
+                        // apex-nya ikut "kesedot" ke baris dasar kabel besar (atau
+                        // sebaliknya baris dasarnya ketarik ke atas) -> conduit kecil
+                        // melayang/tidak sejajar. Baris dasar tiap kelompok (row 0)
+                        // selalu berarti "duduk di lantai tray", sama untuk semua
+                        // kelompok, jadi indeks baris lokal bisa langsung dipakai
+                        // sebagai indeks baris global tanpa perlu dibandingkan silang.
+                        int[] rowIdx = new int[slots.Count];
+                        for (int gStart = 0; gStart < slots.Count;)
+                        {
+                            int gEnd = gStart + 1;
+                            while (gEnd < slots.Count &&
+                                   ReferenceEquals(slots[gEnd].Cable, slots[gStart].Cable)) gEnd++;
+
+                            var local = new List<int>();
+                            for (int t = gStart; t < gEnd; t++) local.Add(t);
+                            local.Sort((a, b) => (slots[a].Pos?.Y ?? 0).CompareTo(slots[b].Pos?.Y ?? 0));
+
+                            double ownGapMm = rFt[gStart] / MmToFt; // radius kabel kelompok ini (mm)
+                            int r = 0;
+                            double anchorY = 0;
+                            bool first = true;
+                            foreach (int t in local)
+                            {
+                                double y = slots[t].Pos?.Y ?? 0;
+                                if (first) { anchorY = y; first = false; }
+                                else if (y - anchorY > ownGapMm) { r++; anchorY = y; }
+                                rowIdx[t] = r;
+                            }
+
+                            gStart = gEnd;
+                        }
+
                         var order = new List<int>();
                         for (int s = 0; s < slots.Count; s++) order.Add(s);
                         order.Sort((a, b) =>
                         {
-                            double ya = slots[a].Pos?.Y ?? 0, yb = slots[b].Pos?.Y ?? 0;
-                            int c = ya.CompareTo(yb);
+                            int c = rowIdx[a].CompareTo(rowIdx[b]);
                             if (c != 0) return c;
                             double xa = slots[a].Pos?.X ?? a, xb = slots[b].Pos?.X ?? b;
                             return xa.CompareTo(xb);
                         });
 
-                        // Pecah jadi BARIS: baris baru bila lompatan tinggi web >
-                        // setengah OD terbesar (memisah baris dasar & apex trefoil).
-                        double rowGapMm = rMaxFt / MmToFt; // = radius OD terbesar (mm)
                         var rows = new List<List<int>>();
-                        double rowBaseY = 0;
+                        int curRow = -1;
                         foreach (int s in order)
                         {
-                            double y = slots[s].Pos?.Y ?? 0;
-                            if (rows.Count == 0 || y - rowBaseY > rowGapMm)
+                            if (rows.Count == 0 || rowIdx[s] != curRow)
                             {
                                 rows.Add(new List<int>());
-                                rowBaseY = y;
+                                curRow = rowIdx[s];
                             }
                             rows[rows.Count - 1].Add(s);
                         }

@@ -258,107 +258,147 @@ namespace CableTrayHub.Revit
                     ElementId levelId = plan.Trays[0].ReferenceLevel?.Id
                         ?? new FilteredElementCollector(doc).OfClass(typeof(Level)).FirstElementId();
 
-                    // === Rapatkan ulang penampang pakai OD conduit NYATA ===
-                    // Susunan dari kanvas web sudah benar (tidak overlap) MEMAKAI
-                    // diameter kabel, tapi Revit menggambar conduit sebesar ukuran
-                    // di Conduit Sizes (sering LEBIH BESAR dari diameter kabel /
-                    // ter-snap ke ukuran default) -> tabung conduit tumpang tindih.
-                    // Solusi: pola & BARIS dari web dipertahankan (dikelompokkan
-                    // dari pos.Y, urut kiri->kanan dari pos.X), tapi jarak antar-
-                    // conduit dihitung dari OD NYATA supaya bersentuhan tanpa tumpuk.
+                    // === Petakan penampang web -> Revit pakai OD conduit NYATA ===
+                    // Posisi tiap kabel di kanvas web (x dari dinding kiri, y dari
+                    // dasar tray, mm, titik PUSAT) sudah benar untuk SEMUA metode
+                    // (Flat Touching / Flat Spaced (De) / Trefoil) sekaligus hasil
+                    // drag manual user — jadi pola itu yang DIREPLAY, bukan dihitung
+                    // ulang per metode di sini. Yang berbeda hanya ukurannya: Revit
+                    // menggambar conduit sebesar ukuran di Conduit Sizes family
+                    // (sering LEBIH BESAR dari diameter kabel / ter-snap ke ukuran
+                    // terdekat), jadi posisi web tak bisa dipakai mentah — tabung
+                    // bisa saling tumpuk.
+                    //
+                    // Maka pola web "digelembungkan" seperlunya mengikuti OD nyata:
+                    //  1. Per KELOMPOK kabel (satu CableInfo = satu jenis/diameter;
+                    //     satu kelompok trefoil selalu sejenis) x & y diskala rasio
+                    //     OD/diameter kabel kelompok itu. Karena serumpun memakai
+                    //     rasio SAMA, geometri di dalam kelompok tetap presisi:
+                    //     apex trefoil tepat di tengah dua kabel dasar, kabel dasar
+                    //     tetap bersentuhan (jarak pusat = OD).
+                    //  2. Kelompok berikutnya di-anchor menyambung dari ujung kanan
+                    //     kelompok sebelumnya (jarak antar-kelompok dari web tetap
+                    //     dipertahankan) supaya urutan kiri->kanan tidak tertukar.
+                    //  3. Sisa bentrokan di seam antar-kelompok diselesaikan dengan
+                    //     menggeser SATU KELOMPOK UTUH ke kanan (rigid) sejauh yang
+                    //     diperlukan — geseran dihitung eksak dari geometri lingkaran
+                    //     (dx = √((ri+rj)² − dv²)), sehingga bentuk trefoil di dalam
+                    //     kelompok tidak ikut berubah.
+                    //
+                    // Dulu SEMUA conduit diberi jarak seragam 2*rMax (= OD conduit
+                    // TERBESAR di jalur) sehingga conduit kecil ikut direnggangkan
+                    // seperti Flat Spaced dan barisan meluber keluar tray — dibuang.
                     var odFtByDia = MeasureConduitOds(doc, conduitType.Id, levelId, slots);
                     double[] slotLat = new double[slots.Count];
                     double[] slotVert = new double[slots.Count];
+                    if (slots.Count > 0)
                     {
-                        double[] rFt = new double[slots.Count];
-                        double rMaxFt = 0;
-                        for (int s = 0; s < slots.Count; s++)
-                        {
-                            rFt[s] = odFtByDia[slots[s].Cable.Diameter] / 2.0;
-                            if (rFt[s] > rMaxFt) rMaxFt = rFt[s];
-                        }
+                        int n = slots.Count;
+                        double[] rFt = new double[n];
+                        double[] webXFt = new double[n];
+                        double[] webYFt = new double[n];
+                        // Batas tiap kelompok kabel (dipakai lagi saat menggeser rigid).
+                        var groups = new List<(int Start, int End)>();
 
-                        // Baris LOKAL per kelompok kabel (satu CableInfo = satu jenis/
-                        // diameter): pakai radius kabel itu SENDIRI sebagai ambang batas,
-                        // bukan radius kabel terbesar se-jalur. Kalau jalur ini campur
-                        // ukuran (mis. kabel besar + kabel kecil), ambang global yang
-                        // dulu dipakai (radius kabel terbesar) sering lebih besar dari
-                        // jarak dasar->apex trefoil kabel KECIL itu sendiri, sehingga
-                        // apex-nya ikut "kesedot" ke baris dasar kabel besar (atau
-                        // sebaliknya baris dasarnya ketarik ke atas) -> conduit kecil
-                        // melayang/tidak sejajar. Baris dasar tiap kelompok (row 0)
-                        // selalu berarti "duduk di lantai tray", sama untuk semua
-                        // kelompok, jadi indeks baris lokal bisa langsung dipakai
-                        // sebagai indeks baris global tanpa perlu dibandingkan silang.
-                        int[] rowIdx = new int[slots.Count];
-                        for (int gStart = 0; gStart < slots.Count;)
+                        // Simulasi lama tanpa data posisi: fallback satu baris rapat
+                        // di dasar tray, urut apa adanya.
+                        double fallbackXmm = 0;
+                        double prevScaledMaxMm = 0, prevRawMaxMm = 0;
+                        bool firstGroup = true;
+
+                        for (int gStart = 0; gStart < n;)
                         {
                             int gEnd = gStart + 1;
-                            while (gEnd < slots.Count &&
+                            while (gEnd < n &&
                                    ReferenceEquals(slots[gEnd].Cable, slots[gStart].Cable)) gEnd++;
+                            groups.Add((gStart, gEnd));
 
-                            var local = new List<int>();
-                            for (int si = gStart; si < gEnd; si++) local.Add(si);
-                            local.Sort((a, b) => (slots[a].Pos?.Y ?? 0).CompareTo(slots[b].Pos?.Y ?? 0));
+                            double diaMm = slots[gStart].Cable.Diameter;
+                            double odFt = odFtByDia[diaMm];
+                            double ratio = diaMm > 0 ? odFt / (diaMm * MmToFt) : 1.0;
 
-                            double ownGapMm = rFt[gStart] / MmToFt; // radius kabel kelompok ini (mm)
-                            int r = 0;
-                            double anchorY = 0;
-                            bool first = true;
-                            foreach (int si in local)
+                            double minXmm = double.MaxValue, maxXmm = double.MinValue;
+                            for (int s = gStart; s < gEnd; s++)
                             {
-                                double y = slots[si].Pos?.Y ?? 0;
-                                if (first) { anchorY = y; first = false; }
-                                else if (y - anchorY > ownGapMm) { r++; anchorY = y; }
-                                rowIdx[si] = r;
+                                PosXY gp = slots[s].Pos;
+                                if (gp == null) continue;
+                                if (gp.X < minXmm) minXmm = gp.X;
+                                if (gp.X > maxXmm) maxXmm = gp.X;
+                            }
+                            bool hasPos = minXmm != double.MaxValue;
+                            if (!hasPos) { minXmm = 0; maxXmm = 0; }
+
+                            // Sambung dari ujung kanan kelompok sebelumnya, jarak
+                            // antar-kelompok mengikuti kanvas web.
+                            double baseMm = firstGroup ? minXmm
+                                                       : prevScaledMaxMm + (minXmm - prevRawMaxMm);
+
+                            for (int s = gStart; s < gEnd; s++)
+                            {
+                                rFt[s] = odFt / 2.0;
+                                PosXY p = slots[s].Pos;
+                                if (p != null)
+                                {
+                                    webXFt[s] = (baseMm + (p.X - minXmm) * ratio) * MmToFt;
+                                    webYFt[s] = p.Y * ratio * MmToFt;
+                                }
+                                else
+                                {
+                                    fallbackXmm += diaMm / 2.0;
+                                    webXFt[s] = fallbackXmm * MmToFt;
+                                    webYFt[s] = 0;
+                                    fallbackXmm += diaMm / 2.0;
+                                }
+                            }
+
+                            if (hasPos)
+                            {
+                                prevScaledMaxMm = baseMm + (maxXmm - minXmm) * ratio;
+                                prevRawMaxMm = maxXmm;
+                                firstGroup = false;
                             }
 
                             gStart = gEnd;
                         }
 
-                        var order = new List<int>();
-                        for (int s = 0; s < slots.Count; s++) order.Add(s);
-                        order.Sort((a, b) =>
-                        {
-                            int c = rowIdx[a].CompareTo(rowIdx[b]);
-                            if (c != 0) return c;
-                            double xa = slots[a].Pos?.X ?? a, xb = slots[b].Pos?.X ?? b;
-                            return xa.CompareTo(xb);
-                        });
-
-                        var rows = new List<List<int>>();
-                        int curRow = -1;
-                        foreach (int s in order)
-                        {
-                            if (rows.Count == 0 || rowIdx[s] != curRow)
-                            {
-                                rows.Add(new List<int>());
-                                curRow = rowIdx[s];
-                            }
-                            rows[rows.Count - 1].Add(s);
-                        }
-
-                        // Tata ulang: baris bawah menempel jarak aman dasar; baris
-                        // atas bersarang di lembah (geser setengah langkah) dan naik
-                        // rMax*√3. Jarak antar-kolom = OD terbesar (aman utk semua).
                         double availLeftFt = latMinFt + sideClrFt;
                         double floorFt = floorVFt + bottomClrFt;
-                        double stepFt = 2.0 * rMaxFt;
-                        double rowHFt = rMaxFt * Math.Sqrt(3.0);
-                        for (int r = 0; r < rows.Count; r++)
+
+                        // Tinggi: y web terskala, minimal duduk di atas jarak aman
+                        // dasar (kalau OD membesar, kabel ikut naik — tak melayang).
+                        for (int s = 0; s < n; s++)
+                            slotVert[s] = floorFt + Math.Max(rFt[s], webYFt[s]);
+
+                        // Lateral awal: jaga jarak antar-pusat seperti di kanvas web.
+                        int leftMost = 0;
+                        for (int s = 1; s < n; s++)
+                            if (webXFt[s] < webXFt[leftMost]) leftMost = s;
+                        double baseXFt = webXFt[leftMost];
+                        double startLatFt = availLeftFt + rFt[leftMost];
+                        for (int s = 0; s < n; s++)
+                            slotLat[s] = startLatFt + (webXFt[s] - baseXFt);
+
+                        // Geser RIGID per kelompok bila seam-nya masih bersentuhan.
+                        var placed = new List<int>();
+                        foreach (var grp in groups)
                         {
-                            var rowSlots = rows[r];
-                            rowSlots.Sort((a, b) =>
+                            double shiftFt = 0;
+                            for (int s = grp.Start; s < grp.End; s++)
                             {
-                                double xa = slots[a].Pos?.X ?? a, xb = slots[b].Pos?.X ?? b;
-                                return xa.CompareTo(xb);
-                            });
-                            double off = (r % 2 == 1) ? rMaxFt : 0.0;
-                            for (int i = 0; i < rowSlots.Count; i++)
+                                foreach (int pv in placed)
+                                {
+                                    double sum = rFt[s] + rFt[pv];
+                                    double dv = slotVert[s] - slotVert[pv];
+                                    if (Math.Abs(dv) >= sum) continue; // beda baris: aman
+                                    double need = slotLat[pv] + Math.Sqrt(sum * sum - dv * dv)
+                                                  - slotLat[s];
+                                    if (need > shiftFt) shiftFt = need;
+                                }
+                            }
+                            for (int s = grp.Start; s < grp.End; s++)
                             {
-                                int s = rowSlots[i];
-                                slotLat[s] = availLeftFt + rMaxFt + off + i * stepFt;
-                                slotVert[s] = floorFt + rFt[s] + r * rowHFt;
+                                slotLat[s] += shiftFt;
+                                placed.Add(s);
                             }
                         }
                     }

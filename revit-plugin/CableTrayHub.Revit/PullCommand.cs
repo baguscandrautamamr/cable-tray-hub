@@ -298,19 +298,19 @@ namespace CableTrayHub.Revit
                                    ReferenceEquals(slots[gEnd].Cable, slots[gStart].Cable)) gEnd++;
 
                             var local = new List<int>();
-                            for (int t = gStart; t < gEnd; t++) local.Add(t);
+                            for (int si = gStart; si < gEnd; si++) local.Add(si);
                             local.Sort((a, b) => (slots[a].Pos?.Y ?? 0).CompareTo(slots[b].Pos?.Y ?? 0));
 
                             double ownGapMm = rFt[gStart] / MmToFt; // radius kabel kelompok ini (mm)
                             int r = 0;
                             double anchorY = 0;
                             bool first = true;
-                            foreach (int t in local)
+                            foreach (int si in local)
                             {
-                                double y = slots[t].Pos?.Y ?? 0;
+                                double y = slots[si].Pos?.Y ?? 0;
                                 if (first) { anchorY = y; first = false; }
                                 else if (y - anchorY > ownGapMm) { r++; anchorY = y; }
-                                rowIdx[t] = r;
+                                rowIdx[si] = r;
                             }
 
                             gStart = gEnd;

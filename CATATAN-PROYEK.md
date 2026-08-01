@@ -225,6 +225,29 @@ dialog Pull**
   lebar terpakai **869,6 mm → 635,6 mm** (tray 600), nol pasangan tumpuk,
   dan semua apex trefoil tepat di titik tengah pasangan dasarnya.
 
+**Ronde 12 (1 Agu): kelompok terakhir masih tumpuk — biang keroknya di WEB**
+- Laporan: setelah Ronde 11 pola di Revit sudah benar & masuk tray, tapi satu
+  kelompok (kabel terbesar) masih saling menimpa.
+- Akar masalah ternyata BUKAN di plugin: saat menyimpan, web menjepit posisi
+  ke dalam tray — `yMm = max(rMm, min(height - rMm, yMm))` (`index.html`).
+  Kanvas MENGGAMBAR apex trefoil menonjol di atas tray (benar, sinyal penuh),
+  tapi nilai yang DISIMPAN dipaksa turun ke `height - r`. Contoh nyata: tray
+  tinggi 100 mm + kabel De 72.5 → apex seharusnya y=101.5 tersimpan jadi
+  y=63.8, menimpa dua kabel dasarnya. Jadi data yang dikirim ke Revit memang
+  sudah tumpuk sejak dari web; plugin cuma mereplay dengan setia.
+- Fix #1 (`index.html`): jepit HANYA ke dinding kiri & dasar tray; batas atas
+  dan kanan dilepas supaya yang tersimpan = yang tergambar (kelebihan
+  kapasitas tampil menonjol keluar sebagai sinyal "penuh", tidak dipaksa
+  tumpuk). Diuji lewat jalur asli `commitSaveSimulation()`: apex tersimpan
+  y=101.5 lagi dan payload nol pasangan tumpuk.
+- Fix #2 (`PullCommand.cs`) — jaring pengaman untuk RIWAYAT LAMA yang sudah
+  terlanjur tersimpan terjepit: di dalam satu kelompok, conduit yang masih
+  bertumpuk diangkat sampai tepat bersinggungan (= tinggi sarang trefoil yang
+  benar, `dv = √((ri+rj)² − dx²)`). Untuk data sehat ini tidak mengubah apa
+  pun. Diuji dengan dataset terjepit: 3 pasangan tumpuk → 0, apex naik ke
+  y≈99.8 (nilai benar untuk OD 73).
+- sw cache naik ke v9.
+
 **Belum diuji (kerjaan berikutnya):**
 -2. Uji ronde 10 di Revit: Pull jalur yang berisi campuran kabel besar+kecil
    (mis. trefoil) → cek conduit kabel kecil kini sejajar dasar, tidak melayang

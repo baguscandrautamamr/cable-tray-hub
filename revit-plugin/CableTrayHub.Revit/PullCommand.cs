@@ -369,6 +369,34 @@ namespace CableTrayHub.Revit
                         for (int s = 0; s < n; s++)
                             slotVert[s] = floorFt + Math.Max(rFt[s], webYFt[s]);
 
+                        // Jaring pengaman untuk riwayat LAMA: dulu web menjepit y
+                        // ke tinggi tray saat menyimpan, jadi apex trefoil yang
+                        // menonjol di atas tray "dipaksa turun" menimpa pasangan
+                        // dasarnya — data tumpuk itu ikut tersimpan. Di dalam satu
+                        // kelompok, conduit yang masih bertumpuk diangkat sampai
+                        // tepat bersinggungan (= tinggi sarang trefoil yang benar).
+                        // Untuk data yang sudah sehat ini tidak mengubah apa pun.
+                        foreach (var grp in groups)
+                        {
+                            var byHeight = new List<int>();
+                            for (int s = grp.Start; s < grp.End; s++) byHeight.Add(s);
+                            byHeight.Sort((a, b) => slotVert[a].CompareTo(slotVert[b]));
+
+                            var settled = new List<int>();
+                            foreach (int s in byHeight)
+                            {
+                                foreach (int lo in settled)
+                                {
+                                    double sum = rFt[s] + rFt[lo];
+                                    double dx = Math.Abs(webXFt[s] - webXFt[lo]);
+                                    if (dx >= sum) continue; // tak sekolom: aman
+                                    double minV = slotVert[lo] + Math.Sqrt(sum * sum - dx * dx);
+                                    if (minV > slotVert[s]) slotVert[s] = minV;
+                                }
+                                settled.Add(s);
+                            }
+                        }
+
                         // Lateral awal: jaga jarak antar-pusat seperti di kanvas web.
                         int leftMost = 0;
                         for (int s = 1; s < n; s++)

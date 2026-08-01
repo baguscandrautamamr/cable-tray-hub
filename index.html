@@ -2331,10 +2331,15 @@ function showToast(message, type = "success") {
         const rMm = (ci.diameter || diaMm) / 2;
         let xMm = (ci.x - cvTrayX) / cvScaleX;
         let yMm = (cvBaseLineY - ci.y) / cvScaleX;
-        // Jepit dengan jarak dinding samping sesuai input user
+        // Jepit HANYA ke dinding kiri & dasar tray. Batas ATAS/KANAN sengaja
+        // TIDAK dijepit: kalau susunan melebihi kapasitas tray, kabel dibiarkan
+        // menonjol keluar sebagai sinyal "penuh" — sama persis dengan yang
+        // digambar kanvas. Dulu ikut dijepit, sehingga apex trefoil yang
+        // menonjol di atas tray DIPAKSA TURUN menimpa dua kabel dasarnya, lalu
+        // posisi tumpuk itu tersimpan dan direplay jadi conduit tumpuk di Revit.
         const sideMm = getSideMarginMm();
-        xMm = Math.max(sideMm + rMm, Math.min(width - sideMm - rMm, xMm));
-        yMm = Math.max(rMm, Math.min(height - rMm, yMm));
+        xMm = Math.max(sideMm + rMm, xMm);
+        yMm = Math.max(rMm, yMm);
         return { x: Math.round(xMm * 10) / 10, y: Math.round(yMm * 10) / 10 };
       }
 

@@ -2742,6 +2742,10 @@ function showToast(message, type = "success") {
       `).join('');
     }
 
+    function cleanPanelName(s) {
+      return String(s || '').replace(/\s+/g, ' ').trim();
+    }
+
     function commitSaveSimulation() {
       // Pastikan kalkulasi & posisi kabel di kanvas penampang sinkron
       runCalculation();
@@ -2816,9 +2820,11 @@ function showToast(message, type = "success") {
           }
         });
         return {
-          key: (r.panelFrom || 'Asal') + '→' + (r.panelTo || 'Tujuan'),
-          panelFrom: r.panelFrom || '',
-          panelTo: r.panelTo || '',
+          // Nama panel dirapikan (spasi depan/belakang/ganda) supaya revisi ke
+          // panel yang sama selalu menghasilkan kunci jalur yang sama di Revit.
+          key: (cleanPanelName(r.panelFrom) || 'Asal') + '→' + (cleanPanelName(r.panelTo) || 'Tujuan'),
+          panelFrom: cleanPanelName(r.panelFrom),
+          panelTo: cleanPanelName(r.panelTo),
           kabel: kabelList
         };
       }).filter(r => r.kabel.length > 0);

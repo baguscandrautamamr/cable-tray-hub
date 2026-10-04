@@ -81,6 +81,11 @@ namespace CableTrayHub.Revit
             var routes = sim.GetRoutes();
             var mapping = SyncStorage.Load(doc);
 
+            // ---------- 1b. Conduit LAMA dari jalur yang tak ada di simulasi ini ----------
+            // Contoh: nama panel diganti (LVMDB -> LVMDP) atau jalur dihapus di
+            // website. Tanpa ini conduit lama tertinggal & menumpuk dengan yang baru.
+            var orphanKeysToDelete = AskOrphanRoutes(doc, routes);
+
             // ---------- 2. Tentukan tray tiap jalur (di luar transaction) ----------
             var plans = new List<RoutePlan>();
             var skipped = new List<string>();
@@ -90,7 +95,9 @@ namespace CableTrayHub.Revit
                 var plan = new RoutePlan { Route = route };
 
                 // Coba pakai pilihan tray yang tersimpan dari pull sebelumnya
-                if (mapping.TryGetValue(route.Key, out List<string> uniqueIds))
+                string mapKey = mapping.Keys.FirstOrDefault(
+                    k => RouteInfo.NormKey(k) == RouteInfo.NormKey(route.Key));
+                if (mapKey != null && mapping.TryGetValue(mapKey, out List<string> uniqueIds))
                 {
                     bool utuh = true;
                     foreach (string uid in uniqueIds)
@@ -177,6 +184,14 @@ namespace CableTrayHub.Revit
             using (var t = new Transaction(doc, "Pull Cable Tray Hub: " + sim.Id))
             {
                 t.Start();
+
+                bool panelParamsOk = EnsurePanelParams(doc);
+                foreach (string ok in orphanKeysToDelete)
+                {
+                    int n = DeleteTaggedElements(doc, ok);
+                    totalDeleted += n;
+                    summary.AppendLine($"🗑 {ok}: {n} conduit/fitting lama dihapus (jalur tidak ada di simulasi).");
+                }
 
                 foreach (var plan in plans)
                 {
@@ -285,6 +300,13 @@ namespace CableTrayHub.Revit
                     // TERBESAR di jalur) sehingga conduit kecil ikut direnggangkan
                     // seperti Flat Spaced dan barisan meluber keluar tray — dibuang.
                     var odFtByDia = MeasureConduitOds(doc, conduitType.Id, levelId, slots);
+
+                    // Frame penampang tiap segmen: dihitung SEKALI untuk seluruh
+                    // rantai dengan parallel transport (frame ikut berputar di
+                    // belokan), sehingga susunan kabel kontinu — termasuk saat
+                    // jalur turun vertikal ke panel. Jalur lepas: frame per segmen.
+                    List<(XYZ N, XYZ V)> frames = isChained ? BuildFrames(chain) : null;
+                    var segFrames = isChained ? frames : chain.Select(c => FrameOf(c.Direction)).ToList();
                     double[] slotLat = new double[slots.Count];
                     double[] slotVert = new double[slots.Count];
                     if (slots.Count > 0)
@@ -434,11 +456,31 @@ namespace CableTrayHub.Revit
                         }
                     }
 
-                    // Frame penampang tiap segmen: dihitung SEKALI untuk seluruh
-                    // rantai dengan parallel transport (frame ikut berputar di
-                    // belokan), sehingga susunan kabel kontinu — termasuk saat
-                    // jalur turun vertikal ke panel.
-                    List<(XYZ N, XYZ V)> frames = isChained ? BuildFrames(chain) : null;
+                    // === Hindari conduit yang SUDAH ADA di tray (jalur lain) ===
+                    // Conduit lain yang sejajar & berada di dalam penampang tray
+                    // (termasuk jalur sebelumnya di simulasi yang sama) dibaca
+                    // sebagai rintangan; seluruh susunan jalur ini digeser RIGID ke
+                    // lajur kosong — menjauh dari kabel yang sudah ada.
+                    string laneNote = "";
+                    if (slots.Count > 0)
+                    {
+                        doc.Regenerate();
+                        var obstacles = FindObstacles(doc, chain, segFrames,
+                            latMinFt, latMaxFt, floorVFt, halfHFt);
+                        if (obstacles.Count > 0)
+                        {
+                            double rightWallFt = latMaxFt - sideClrFt;
+                            double leftWallFt = latMinFt + sideClrFt;
+                            double shift = ChooseLaneShift(slotLat, slotVert,
+                                slots.Select(sl => odFtByDia[sl.Cable.Diameter] / 2.0).ToArray(),
+                                obstacles, leftWallFt, rightWallFt, out bool fits);
+                            for (int s = 0; s < slots.Count; s++) slotLat[s] += shift;
+                            laneNote = $" — {obstacles.Count} conduit lain di tray, digeser {Math.Abs(shift) / MmToFt:0} mm " +
+                                       (shift >= 0 ? "ke kanan" : "ke kiri") +
+                                       (fits ? "" : " ⚠ TRAY PENUH: lajur kosong tidak cukup, conduit melewati arm tray");
+                        }
+                    }
+
                     // Info tiap belokan (radius busur elbow tray dari FITTING
                     // yang dipilih user) — dihitung sekali per jalur.
                     List<BendInfo> bendInfos = isChained
@@ -508,6 +550,7 @@ namespace CableTrayHub.Revit
                         }
                     }
 
+                    if (panelParamsOk) SetPanelParams(doc, route);
                     totalCreated += created;
                     totalElbow += elbows;
                     totalBend += bends;
@@ -515,13 +558,16 @@ namespace CableTrayHub.Revit
                     // 3d. Ingat pilihan tray + fitting untuk pull berikutnya
                     var remembered = plan.Trays.Select(tr => tr.UniqueId).ToList();
                     remembered.AddRange(plan.Fittings.Select(f => f.UniqueId));
+                    foreach (var oldKey in mapping.Keys
+                                 .Where(k => RouteInfo.NormKey(k) == RouteInfo.NormKey(route.Key)).ToList())
+                        mapping.Remove(oldKey);
                     mapping[route.Key] = remembered;
 
                     summary.AppendLine(
                         $"✔ {route.Key}: {created} conduit, {elbows} elbow" +
                         (isChained ? "" : " — segmen tidak menyambung, digambar per segmen") +
                         (deleted > 0 ? $" (menggantikan {deleted} lama)" : " (baru)") +
-                        (plan.NewSelection ? "" : " — pakai tray tersimpan"));
+                        (plan.NewSelection ? "" : " — pakai tray tersimpan") + laneNote);
                 }
 
                 SyncStorage.Save(doc, mapping);
@@ -561,22 +607,10 @@ namespace CableTrayHub.Revit
 
         private static int DeleteTaggedElements(Document doc, string routeKey)
         {
-            string prefix = TagPrefix + routeKey + "|";
-            var ids = new List<ElementId>();
-
-            var conduits = new FilteredElementCollector(doc).OfClass(typeof(Conduit));
-            foreach (Element e in conduits)
-            {
-                if (GetComments(e).StartsWith(prefix)) ids.Add(e.Id);
-            }
-
-            var fittings = new FilteredElementCollector(doc)
-                .OfCategory(BuiltInCategory.OST_ConduitFitting)
-                .WhereElementIsNotElementType();
-            foreach (Element e in fittings)
-            {
-                if (GetComments(e).StartsWith(prefix)) ids.Add(e.Id);
-            }
+            string norm = RouteInfo.NormKey(routeKey);
+            var ids = TaggedElements(doc)
+                .Where(x => RouteInfo.NormKey(x.Key) == norm)
+                .Select(x => x.El.Id).ToList();
 
             int deleted = 0;
             foreach (var id in ids)
@@ -587,6 +621,272 @@ namespace CableTrayHub.Revit
                 try { doc.Delete(id); deleted++; } catch { /* sudah terhapus */ }
             }
             return deleted;
+        }
+
+        // =================================================================
+        //  PENANDA JALUR, CONDUIT LAMA, PARAMETER PANEL
+        // =================================================================
+
+        internal const string ParamPanelAsal = "CTH Panel Asal";
+        internal const string ParamPanelTujuan = "CTH Panel Tujuan";
+
+        /// <summary>Kunci jalur dari Comments "CTH|&lt;jalur&gt;|..." (null bila bukan milik add-in).</summary>
+        private static string TagKeyOf(Element e)
+        {
+            string c = GetComments(e);
+            if (!c.StartsWith(TagPrefix)) return null;
+            string rest = c.Substring(TagPrefix.Length);
+            int bar = rest.IndexOf('|');
+            return bar >= 0 ? rest.Substring(0, bar) : rest;
+        }
+
+        /// <summary>Semua conduit & conduit fitting bertanda add-in, beserta kunci jalurnya.</summary>
+        private static List<(Element El, string Key)> TaggedElements(Document doc)
+        {
+            var list = new List<(Element, string)>();
+            var conduits = new FilteredElementCollector(doc).OfClass(typeof(Conduit));
+            var fittings = new FilteredElementCollector(doc)
+                .OfCategory(BuiltInCategory.OST_ConduitFitting)
+                .WhereElementIsNotElementType();
+            foreach (Element e in conduits.Concat(fittings))
+            {
+                string k = TagKeyOf(e);
+                if (k != null) list.Add((e, k));
+            }
+            return list;
+        }
+
+        private static (string From, string To) SplitKey(string normKey)
+        {
+            int a = normKey.IndexOf('→');
+            return a >= 0 ? (normKey.Substring(0, a), normKey.Substring(a + 1)) : (normKey, "");
+        }
+
+        /// <summary>
+        /// Cari jalur di model yang tidak ada di simulasi tapi memakai panel yang
+        /// sama, lalu tanya user mana yang dihapus. Jalur dengan PANEL TUJUAN
+        /// sama tapi panel asal berbeda (asal diganti nama) dicentang otomatis;
+        /// jalur dengan panel asal sama tidak (bisa saja panel lain yang sah).
+        /// </summary>
+        private static List<string> AskOrphanRoutes(Document doc, List<RouteInfo> routes)
+        {
+            var simKeys = new HashSet<string>(routes.Select(r => RouteInfo.NormKey(r.Key)));
+            var simFrom = new HashSet<string>(simKeys.Select(k => SplitKey(k).From));
+            var simTo = new HashSet<string>(simKeys.Select(k => SplitKey(k).To));
+
+            var items = new List<OrphanDialog.Item>();
+            foreach (var grp in TaggedElements(doc).GroupBy(x => RouteInfo.NormKey(x.Key)))
+            {
+                if (simKeys.Contains(grp.Key)) continue;
+                var (from, to) = SplitKey(grp.Key);
+                bool sameTo = to.Length > 0 && simTo.Contains(to);
+                bool sameFrom = simFrom.Contains(from);
+                if (!sameTo && !sameFrom) continue;
+                items.Add(new OrphanDialog.Item
+                {
+                    Key = grp.First().Key,
+                    Count = grp.Count(),
+                    Reason = sameTo ? "panel tujuan sama, panel asal berbeda" : "panel asal sama",
+                    Checked = sameTo
+                });
+            }
+            if (items.Count == 0) return new List<string>();
+
+            using (var dlg = new OrphanDialog(items))
+            {
+                return dlg.ShowDialog() == DialogResult.OK ? dlg.SelectedKeys : new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Pastikan shared parameter teks "CTH Panel Asal" & "CTH Panel Tujuan"
+        /// terikat (instance) ke Conduits & Conduit Fittings — dipakai untuk
+        /// View Filter / Schedule. Dibuat otomatis lewat file shared parameter
+        /// sementara; file shared parameter user dikembalikan seperti semula.
+        /// </summary>
+        private static bool EnsurePanelParams(Document doc)
+        {
+            var app = doc.Application;
+            var existing = new HashSet<string>();
+            DefinitionBindingMapIterator it = doc.ParameterBindings.ForwardIterator();
+            while (it.MoveNext())
+                if (it.Key != null) existing.Add(it.Key.Name);
+            if (existing.Contains(ParamPanelAsal) && existing.Contains(ParamPanelTujuan)) return true;
+
+            string original = app.SharedParametersFilename;
+            try
+            {
+                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CableTrayHub_SharedParameters.txt");
+                if (!System.IO.File.Exists(tmp)) System.IO.File.WriteAllText(tmp, "");
+                app.SharedParametersFilename = tmp;
+                DefinitionFile df = app.OpenSharedParameterFile();
+                if (df == null) return false;
+                DefinitionGroup grp = df.Groups.get_Item("CableTrayHub") ?? df.Groups.Create("CableTrayHub");
+
+                CategorySet cats = app.Create.NewCategorySet();
+                cats.Insert(Category.GetCategory(doc, BuiltInCategory.OST_Conduit));
+                cats.Insert(Category.GetCategory(doc, BuiltInCategory.OST_ConduitFitting));
+                InstanceBinding binding = app.Create.NewInstanceBinding(cats);
+
+                foreach (string name in new[] { ParamPanelAsal, ParamPanelTujuan })
+                {
+                    if (existing.Contains(name)) continue;
+                    Definition def = grp.Definitions.get_Item(name)
+                        ?? grp.Definitions.Create(new ExternalDefinitionCreationOptions(name, SpecTypeId.String.Text));
+                    doc.ParameterBindings.Insert(def, binding);
+                }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                try { if (!string.IsNullOrEmpty(original)) app.SharedParametersFilename = original; } catch { }
+            }
+        }
+
+        /// <summary>Isi "CTH Panel Asal/Tujuan" di semua conduit & fitting jalur ini.</summary>
+        private static void SetPanelParams(Document doc, RouteInfo route)
+        {
+            string norm = RouteInfo.NormKey(route.Key);
+            foreach (var (el, key) in TaggedElements(doc))
+            {
+                if (RouteInfo.NormKey(key) != norm) continue;
+                SetText(el, ParamPanelAsal, route.PanelFrom);
+                SetText(el, ParamPanelTujuan, route.PanelTo);
+            }
+        }
+
+        private static void SetText(Element e, string name, string value)
+        {
+            try
+            {
+                Parameter p = e.LookupParameter(name);
+                if (p != null && !p.IsReadOnly) p.Set(value ?? "");
+            }
+            catch { /* opsional */ }
+        }
+
+        // =================================================================
+        //  DETEKSI CONDUIT YANG SUDAH ADA DI TRAY + PILIH LAJUR KOSONG
+        // =================================================================
+
+        /// <summary>Frame penampang (N, V) segmen lepas — sama dengan OffsetVector.</summary>
+        private static (XYZ N, XYZ V) FrameOf(XYZ direction)
+        {
+            XYZ n = PerpendicularOf(direction);
+            XYZ v = direction.CrossProduct(n);
+            if (v.GetLength() < 1e-6) v = XYZ.BasisZ;
+            v = v.Normalize();
+            if (v.Z < 0) v = v.Negate();
+            return (n, v);
+        }
+
+        private struct Obstacle { public double Lat, Vert, R; }
+
+        /// <summary>
+        /// Conduit lain yang sejajar sumbu tray, menumpang minimal 100 mm di
+        /// sepanjang segmen, dan pusatnya di dalam penampang tray — dinyatakan
+        /// dalam koordinat penampang (lat, vert) frame yang SAMA dengan yang
+        /// dipakai menggambar conduit jalur ini.
+        /// </summary>
+        private static List<Obstacle> FindObstacles(Document doc, List<Line> chain,
+            List<(XYZ N, XYZ V)> frames, double latMinFt, double latMaxFt,
+            double floorVFt, double halfHFt)
+        {
+            var result = new List<Obstacle>();
+            var conduits = new FilteredElementCollector(doc).OfClass(typeof(Conduit)).Cast<Conduit>().ToList();
+            double minOverlapFt = 100 * MmToFt;
+            double tolFt = 20 * MmToFt;
+
+            for (int i = 0; i < chain.Count; i++)
+            {
+                Line axis = chain[i];
+                XYZ o = axis.GetEndPoint(0);
+                XYZ d = axis.Direction;
+                double len = axis.Length;
+                var (nVec, vVec) = frames[i];
+
+                foreach (Conduit c in conduits)
+                {
+                    if (!(c.Location is LocationCurve lc) || !(lc.Curve is Line cl)) continue;
+                    if (Math.Abs(cl.Direction.DotProduct(d)) < 0.999) continue;
+
+                    XYZ a = cl.GetEndPoint(0), b = cl.GetEndPoint(1);
+                    double ta = (a - o).DotProduct(d), tb = (b - o).DotProduct(d);
+                    double overlap = Math.Min(Math.Max(ta, tb), len) - Math.Max(Math.Min(ta, tb), 0);
+                    if (overlap < minOverlapFt) continue;
+
+                    XYZ w = (a - o) - d * ta;
+                    double lat = w.DotProduct(nVec), vert = w.DotProduct(vVec);
+
+                    double r = 0;
+                    Parameter od = c.get_Parameter(BuiltInParameter.RBS_CONDUIT_OUTER_DIAM_PARAM);
+                    if (od != null && od.HasValue) r = od.AsDouble() / 2.0;
+                    if (r <= 0) r = 10 * MmToFt;
+
+                    if (lat < latMinFt - tolFt || lat > latMaxFt + tolFt) continue;
+                    if (vert < floorVFt - tolFt || vert > halfHFt + 500 * MmToFt) continue;
+
+                    result.Add(new Obstacle { Lat = lat, Vert = vert, R = r });
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Geseran lateral RIGID untuk seluruh susunan jalur supaya tidak
+        /// bersinggungan dengan rintangan. Kandidat: posisi asli, menempel
+        /// dinding kiri/kanan, dan tepat bersebelahan tiap rintangan. Dipilih
+        /// yang bebas tabrakan & muat di tray dengan geseran terkecil.
+        /// </summary>
+        private static double ChooseLaneShift(double[] lat, double[] vert, double[] r,
+            List<Obstacle> obs, double leftWallFt, double rightWallFt, out bool fits)
+        {
+            int n = lat.Length;
+            double minEdge = double.MaxValue, maxEdge = double.MinValue;
+            for (int s = 0; s < n; s++)
+            {
+                minEdge = Math.Min(minEdge, lat[s] - r[s]);
+                maxEdge = Math.Max(maxEdge, lat[s] + r[s]);
+            }
+
+            var cands = new List<double> { 0, leftWallFt - minEdge, rightWallFt - maxEdge };
+            foreach (var o in obs)
+                for (int s = 0; s < n; s++)
+                {
+                    double sum = r[s] + o.R, dv = vert[s] - o.Vert;
+                    if (Math.Abs(dv) >= sum) continue;
+                    double dx = Math.Sqrt(sum * sum - dv * dv) + 1e-4;
+                    cands.Add(o.Lat + dx - lat[s]);
+                    cands.Add(o.Lat - dx - lat[s]);
+                }
+
+            bool Free(double sh)
+            {
+                foreach (var o in obs)
+                    for (int s = 0; s < n; s++)
+                    {
+                        double dl = lat[s] + sh - o.Lat, dv = vert[s] - o.Vert, sum = r[s] + o.R - 1e-5;
+                        if (dl * dl + dv * dv < sum * sum) return false;
+                    }
+                return true;
+            }
+            bool Inside(double sh) => minEdge + sh >= leftWallFt - 1e-5 && maxEdge + sh <= rightWallFt + 1e-5;
+
+            var free = cands.Where(Free).ToList();
+            var good = free.Where(Inside).ToList();
+            fits = good.Count > 0;
+            // Geseran TERKECIL dari posisi web: jalur berikutnya di simulasi
+            // yang sama tetap bersebelahan persis seperti kanvas, dan jalur
+            // baru menempel tepat di samping kabel lama.
+            if (fits) return good.OrderBy(Math.Abs).First();
+            if (free.Count == 0) { fits = false; return 0; }
+            // Tidak muat: ambil yang paling sedikit melewati dinding.
+            return free.OrderBy(sh => Math.Max(0, leftWallFt - (minEdge + sh)) +
+                                      Math.Max(0, (maxEdge + sh) - rightWallFt)).First();
         }
 
         internal static string GetComments(Element e)

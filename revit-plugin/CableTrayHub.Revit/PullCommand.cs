@@ -716,8 +716,8 @@ namespace CableTrayHub.Revit
             string original = app.SharedParametersFilename;
             try
             {
-                string tmp = Path.Combine(Path.GetTempPath(), "CableTrayHub_SharedParameters.txt");
-                if (!File.Exists(tmp)) File.WriteAllText(tmp, "");
+                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CableTrayHub_SharedParameters.txt");
+                if (!System.IO.File.Exists(tmp)) System.IO.File.WriteAllText(tmp, "");
                 app.SharedParametersFilename = tmp;
                 DefinitionFile df = app.OpenSharedParameterFile();
                 if (df == null) return false;

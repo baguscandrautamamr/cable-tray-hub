@@ -1078,7 +1078,14 @@ namespace CableTrayHub.Revit
                     if (sin < 0.17) continue; // sejajar (< ~10°): ditangani pemilihan lajur
                     double need = rFt + f.R + LiftClearanceFt;
                     double d = ClosestXY(p, q, f.A, f.B, out double t, out double u);
-                    if (d >= need) continue;
+                    // Persilangan NYATA saja: sumbu kedua conduit benar-benar
+                    // berpotongan di denah, dan titik potongnya di BADAN conduit
+                    // lain (bukan di ujungnya). Conduit yang ikut berbelok
+                    // bersebelahan di tee hanya "bersentuhan" di titik sudut
+                    // polyline (ujung segmen) — dulu terbaca persilangan dan
+                    // conduit ikut dinaikkan padahal tidak clash.
+                    if (d > 1 * MmToFt) continue;
+                    if (u * fl < need || (1 - u) * fl < need) continue;
                     double ourZ = p.Z + (q.Z - p.Z) * t;
                     double fz = f.A.Z + (f.B.Z - f.A.Z) * u;
                     if (fz - f.R >= ourZ + rFt + LiftClearanceFt) continue; // conduit lain di atas

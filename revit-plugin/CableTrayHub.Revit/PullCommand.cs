@@ -541,6 +541,24 @@ namespace CableTrayHub.Revit
                     // conduit lain (mis. di percabangan tee), conduit dinaikkan.
                     var foreign = ForeignConduitLines(doc, route.Key);
                     int lifts = 0;
+                    var crossings = new List<(XYZ PA, XYZ PB, double H)>();
+                    double liftRFt = 0; // radius conduit terbesar: tanjakan seragam satu jalur
+                    if (isChained && foreign.Count > 0 && slots.Count > 0)
+                    {
+                        double span = 0, bottom = double.MaxValue, top = double.MinValue;
+                        for (int k = 0; k < slots.Count; k++)
+                        {
+                            double rk = odFtByDia[slots[k].Cable.Diameter] / 2.0;
+                            span = Math.Max(span, Math.Abs(slotLat[k]) + rk);
+                            bottom = Math.Min(bottom, slotVert[k] - rk);
+                            top = Math.Max(top, slotVert[k] + rk);
+                            liftRFt = Math.Max(liftRFt, rk);
+                        }
+                        // Sumbu tray (lat = 0, vert = 0) sebagai acuan deteksi.
+                        List<XYZ> axisPts = BuildOffsetPolyline(chain, frames, bendInfos,
+                            0, 0, 0, out _);
+                        crossings = DetectCrossings(axisPts, span, bottom, top, foreign);
+                    }
 
                     int created = 0, elbows = 0, bends = 0;
                     for (int slot = 0; slot < slots.Count; slot++)
@@ -569,8 +587,8 @@ namespace CableTrayHub.Revit
                         {
                             List<XYZ> pts = BuildOffsetPolyline(chain, frames, bendInfos,
                                 lat, vert, effOdMm, out bendRadii);
-                            if (foreign.Count > 0 &&
-                                ApplyCrossingLifts(ref pts, ref bendRadii, effOdMm / 2.0 * MmToFt, foreign))
+                            if (crossings.Count > 0 &&
+                                ApplyCrossingLifts(ref pts, ref bendRadii, liftRFt, crossings))
                                 lifts++;
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
@@ -1049,22 +1067,22 @@ namespace CableTrayHub.Revit
         /// tee dilalui utuh di ketinggian atas dan radius naik tidak terhalang.
         /// Mengembalikan true bila ada yang dinaikkan.
         /// </summary>
-        private static bool ApplyCrossingLifts(ref List<XYZ> pts, ref List<double> bendRadii,
-            double rFt, List<ForeignLine> foreign)
+        /// <summary>
+        /// Deteksi persilangan jalur (sekali per jalur) pada polyline SUMBU tray:
+        /// conduit jalur lain yang sumbunya memotong sumbu jalur ini di denah,
+        /// di badan conduit itu (bukan ujungnya), dan ketinggiannya bentrok
+        /// dengan susunan kabel jalur ini. H = angkat supaya dasar conduit
+        /// TERENDAH jalur ini lolos di atas conduit lain + jarak bebas.
+        /// spanFt = setengah lebar susunan (max |lat| + r); bottomFt = min(vert - r).
+        /// </summary>
+        private static List<(XYZ PA, XYZ PB, double H)> DetectCrossings(List<XYZ> axis,
+            double spanFt, double bottomFt, double topFt, List<ForeignLine> foreign)
         {
-            List<XYZ> src = pts;
-            int m = src.Count;
-            if (m < 2) return false;
-            var cum = new double[m];
-            for (int i = 1; i < m; i++) cum[i] = cum[i - 1] + src[i - 1].DistanceTo(src[i]);
-            double total = cum[m - 1];
-
-            // 1. Zona persilangan [a,b] + tinggi angkat H yang dibutuhkan.
-            var zones = new List<(double A, double B, double H)>();
-            for (int j = 0; j < m - 1; j++)
+            var res = new List<(XYZ, XYZ, double)>();
+            for (int j = 0; j < axis.Count - 1; j++)
             {
-                XYZ p = src[j], q = src[j + 1];
-                double len = cum[j + 1] - cum[j];
+                XYZ p = axis[j], q = axis[j + 1];
+                double len = p.DistanceTo(q);
                 if (len < 1e-6) continue;
                 XYZ dir = (q - p) / len;
                 if (Math.Abs(dir.Z) > 0.1) continue; // hanya segmen mendatar
@@ -1076,25 +1094,58 @@ namespace CableTrayHub.Revit
                     fd = fd / fl;
                     double sin = Math.Abs(dir.X * fd.Y - dir.Y * fd.X);
                     if (sin < 0.17) continue; // sejajar (< ~10°): ditangani pemilihan lajur
-                    double need = rFt + f.R + LiftClearanceFt;
+                    double need = spanFt + f.R + LiftClearanceFt;
                     double d = ClosestXY(p, q, f.A, f.B, out double t, out double u);
-                    // Persilangan NYATA saja: sumbu kedua conduit benar-benar
-                    // berpotongan di denah, dan titik potongnya di BADAN conduit
-                    // lain (bukan di ujungnya). Conduit yang ikut berbelok
-                    // bersebelahan di tee hanya "bersentuhan" di titik sudut
-                    // polyline (ujung segmen) — dulu terbaca persilangan dan
-                    // conduit ikut dinaikkan padahal tidak clash.
+                    // Persilangan NYATA: sumbu berpotongan di denah, di BADAN
+                    // conduit lain (conduit yang ikut berbelok bersebelahan
+                    // hanya bersinggungan di ujung/sudutnya -> diabaikan).
                     if (d > 1 * MmToFt) continue;
                     if (u * fl < need || (1 - u) * fl < need) continue;
-                    double ourZ = p.Z + (q.Z - p.Z) * t;
+                    double axisZ = p.Z + (q.Z - p.Z) * t;
                     double fz = f.A.Z + (f.B.Z - f.A.Z) * u;
-                    if (fz - f.R >= ourZ + rFt + LiftClearanceFt) continue; // conduit lain di atas
-                    if (fz + f.R + LiftClearanceFt <= ourZ - rFt) continue; // sudah di atasnya
-                    double h = fz + f.R + LiftClearanceFt - (ourZ - rFt);
-                    double sMid = cum[j] + t * len;
+                    if (fz - f.R >= axisZ + topFt + LiftClearanceFt) continue; // conduit lain di atas
+                    if (fz + f.R + LiftClearanceFt <= axisZ + bottomFt) continue; // sudah lolos
+                    double h = fz + f.R + LiftClearanceFt - (axisZ + bottomFt);
                     double w = need / sin;
-                    zones.Add((sMid - w, sMid + w, h));
+                    XYZ mid = p + dir * (t * len);
+                    res.Add((mid - dir * w, mid + dir * w, h));
                 }
+            }
+            return res;
+        }
+
+        private static bool ApplyCrossingLifts(ref List<XYZ> pts, ref List<double> bendRadii,
+            double rFt, List<(XYZ PA, XYZ PB, double H)> crossings)
+        {
+            List<XYZ> src = pts;
+            int m = src.Count;
+            if (m < 2) return false;
+            var cum = new double[m];
+            for (int i = 1; i < m; i++) cum[i] = cum[i - 1] + src[i - 1].DistanceTo(src[i]);
+            double total = cum[m - 1];
+
+            // 1. Zona persilangan (dideteksi SEKALI per jalur pada sumbu tray)
+            //    dipetakan ke stasiun polyline conduit ini lewat proyeksi titik.
+            //    Tinggi H SAMA untuk semua conduit jalur -> susunan (trefoil,
+            //    dsb.) terangkat utuh, tidak digepengkan jadi satu baris.
+            double StationOf(XYZ pt)
+            {
+                double best = double.MaxValue, st = 0;
+                for (int k = 0; k < m - 1; k++)
+                {
+                    XYZ a0 = src[k], d0 = src[k + 1] - src[k];
+                    double l2 = d0.DotProduct(d0);
+                    double tt = l2 > 1e-12 ? Math.Clamp((pt - a0).DotProduct(d0) / l2, 0, 1) : 0;
+                    double dist = pt.DistanceTo(a0 + d0 * tt);
+                    if (dist < best) { best = dist; st = cum[k] + tt * Math.Sqrt(l2); }
+                }
+                return st;
+            }
+            var zones = new List<(double A, double B, double H)>();
+            foreach (var c in crossings)
+            {
+                double a1 = StationOf(c.PA), b1 = StationOf(c.PB);
+                zones.Add((Math.Min(a1, b1), Math.Max(a1, b1), c.H));
             }
             if (zones.Count == 0) return false;
 

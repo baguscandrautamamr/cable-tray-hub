@@ -20,6 +20,51 @@ namespace CableTrayHub.Revit
     ///    tanpa perlu select tray lagi.
     /// Penanda: parameter Comments tiap conduit = "CTH|<jalur>|<nama kabel>".
     /// </summary>
+    /// <summary>
+    /// Menangani error fitting conduit yang tak bisa diabaikan saat commit
+    /// (mis. "The conduit has been modified to be in the opposite direction or
+    /// insufficient space to create the required fittings"): elemen yang gagal
+    /// DIHAPUS otomatis (prioritas fitting) agar Pull tetap selesai tanpa
+    /// dialog error yang memblokir; jumlahnya dilaporkan ke user.
+    /// </summary>
+    internal class FittingFailureHandler : IFailuresPreprocessor
+    {
+        public int Removed;
+
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor fa)
+        {
+            bool changed = false;
+            foreach (FailureMessageAccessor f in fa.GetFailureMessages())
+            {
+                if (f.GetSeverity() == FailureSeverity.Warning)
+                {
+                    fa.DeleteWarning(f);
+                    continue;
+                }
+                var ids = f.GetFailingElementIds().ToList();
+                var doc = fa.GetDocument();
+                var fittings = ids.Where(id => doc.GetElement(id) is FamilyInstance).ToList();
+                var toDelete = fittings.Count > 0 ? fittings : ids;
+                if (toDelete.Count > 0)
+                {
+                    try
+                    {
+                        fa.DeleteElements(toDelete);
+                        Removed += toDelete.Count;
+                        changed = true;
+                        continue;
+                    }
+                    catch { }
+                }
+                if (f.HasResolutions())
+                {
+                    try { fa.ResolveFailure(f); changed = true; } catch { }
+                }
+            }
+            return changed ? FailureProcessingResult.ProceedWithCommit : FailureProcessingResult.Continue;
+        }
+    }
+
     [Transaction(TransactionMode.Manual)]
     public class PullCommand : IExternalCommand
     {
@@ -181,8 +226,12 @@ namespace CableTrayHub.Revit
             var summary = new StringBuilder();
             int totalCreated = 0, totalDeleted = 0, totalElbow = 0, totalBend = 0;
 
+            var fittingGuard = new FittingFailureHandler();
             using (var t = new Transaction(doc, "Pull Cable Tray Hub: " + sim.Id))
             {
+                FailureHandlingOptions fho = t.GetFailureHandlingOptions();
+                fho.SetFailuresPreprocessor(fittingGuard);
+                t.SetFailureHandlingOptions(fho);
                 t.Start();
 
                 bool panelParamsOk = EnsurePanelParams(doc);
@@ -589,6 +638,11 @@ namespace CableTrayHub.Revit
                 doc.GetWorksetTable().SetActiveWorksetId(prevActiveWorksetId);
 
             // ---------- 4. Laporan ----------
+            if (fittingGuard.Removed > 0)
+                summary.AppendLine(
+                    $"\n⚠ {fittingGuard.Removed} fitting/conduit tidak bisa dibuat Revit karena ruang " +
+                    "lurus kurang (\"insufficient space to create the required fittings\") dan dihapus " +
+                    "otomatis — sambungan di titik itu perlu dicek/disambung manual.");
             foreach (var s in skipped) summary.AppendLine($"◌ {s}: dilewati.");
 
             if (!typeHasElbow && totalBend > 0)
@@ -914,6 +968,43 @@ namespace CableTrayHub.Revit
 
         private struct ForeignLine { public XYZ A, B; public double R; }
 
+        /// <summary>
+        /// Perkiraan radius elbow default family conduit (≈ 6 × OD). Dipakai
+        /// untuk menyediakan ruang lurus yang cukup bagi elbow — kalau kurang,
+        /// Revit gagal membuat fitting ("insufficient space to create the
+        /// required fittings").
+        /// </summary>
+        private static double ElbowRadiusEstimate(double rFt) => Math.Max(12 * rFt, 150 * MmToFt);
+
+        /// <summary>
+        /// Panjang horizontal tanjakan & ancang-ancang untuk naik setinggi h.
+        /// Sudut tanjakan dipilih dari 45° lalu dilandaikan sampai segmen
+        /// miringnya cukup panjang untuk DUA elbow (bawah & atas tanjakan);
+        /// ancang-ancang minimal 300 mm dan tidak lebih pendek dari tangen
+        /// elbow tanjakan + tangen elbow belokan (dihitung terpisah).
+        /// </summary>
+        private static (double Run, double Approach) RampFor(double h, double rFt)
+        {
+            double rb = ElbowRadiusEstimate(rFt);
+            double margin = 30 * MmToFt;
+            for (int deg = 45; deg >= 10; deg -= 5)
+            {
+                double a = deg * Math.PI / 180.0;
+                double slope = h / Math.Sin(a);
+                double tan = rb * Math.Tan(a / 2.0);
+                if (slope >= 2 * tan + margin)
+                {
+                    double run = Math.Max(h / Math.Tan(a), LiftMinRampFt);
+                    return (run, Math.Max(LiftApproachFt, tan + margin));
+                }
+            }
+            double a10 = 10 * Math.PI / 180.0;
+            double t10 = rb * Math.Tan(a10 / 2.0);
+            // Angkat sangat rendah: pakai sudut 10° dengan panjang minimal 2 tangen.
+            double run10 = Math.Max(Math.Max(h / Math.Tan(a10), (2 * t10 + margin) * Math.Cos(a10)), LiftMinRampFt);
+            return (run10, Math.Max(LiftApproachFt, t10 + margin));
+        }
+
         /// <summary>Segmen conduit (mendatar) milik jalur lain / buatan manual.</summary>
         private static List<ForeignLine> ForeignConduitLines(Document doc, string routeKey)
         {
@@ -1008,7 +1099,7 @@ namespace CableTrayHub.Revit
                 if (d1.GetLength() < 1e-9 || d2.GetLength() < 1e-9) continue;
                 double ang = d1.Normalize().AngleTo(d2.Normalize());
                 double rb = k - 1 < bendRadii.Count ? bendRadii[k - 1] : 0;
-                vTan[k] = rb > 0 ? rb * Math.Tan(ang / 2.0) : 6 * rFt; // default family: ±3×OD
+                vTan[k] = (rb > 0 ? rb : ElbowRadiusEstimate(rFt)) * Math.Tan(ang / 2.0);
             }
 
             // 2. Perluas zona agar belokan di dekatnya ikut di "dataran atas",
@@ -1025,21 +1116,22 @@ namespace CableTrayHub.Revit
                     {
                         if (vTan[k] <= 0) continue;
                         double lo = cum[k] - vTan[k], hi = cum[k] + vTan[k];
-                        if (hi >= a - LiftApproachFt && lo <= b + LiftApproachFt &&
+                        double ap = RampFor(z.H, rFt).Approach;
+                        if (hi >= a - ap && lo <= b + ap &&
                             (lo < a || hi > b))
                         {
                             a = Math.Min(a, lo); b = Math.Max(b, hi); grew = true;
                         }
                     }
                 }
-                double ramp = Math.Max(z.H, LiftMinRampFt);
-                double s1 = a - LiftApproachFt, s2 = b + LiftApproachFt;
+                var (ramp, appr) = RampFor(z.H, rFt);
+                double s1 = a - appr, s2 = b + appr;
                 double s0 = s1 - ramp, s3 = s2 + ramp;
                 if (prof.Count > 0 && s0 <= prof[^1].S3)
                 {
                     var last = prof[^1];
                     double hh = Math.Max(last.H, z.H);
-                    double rr = Math.Max(hh, LiftMinRampFt);
+                    double rr = RampFor(hh, rFt).Run;
                     double ns1 = Math.Min(last.S1, s1), ns2 = Math.Max(last.S2, s2);
                     prof[^1] = (ns1 - rr, ns1, ns2, ns2 + rr, hh);
                 }

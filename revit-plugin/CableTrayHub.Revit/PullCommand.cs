@@ -487,6 +487,12 @@ namespace CableTrayHub.Revit
                         ? ComputeBends(chain, plan.Fittings, revitWmm, revitHmm)
                         : null;
 
+                    // Conduit jalur LAIN (sudah ada di model) untuk deteksi
+                    // persilangan: bila conduit jalur ini memotong di atas/bawah
+                    // conduit lain (mis. di percabangan tee), conduit dinaikkan.
+                    var foreign = ForeignConduitLines(doc, route.Key);
+                    int lifts = 0;
+
                     int created = 0, elbows = 0, bends = 0;
                     for (int slot = 0; slot < slots.Count; slot++)
                     {
@@ -514,6 +520,9 @@ namespace CableTrayHub.Revit
                         {
                             List<XYZ> pts = BuildOffsetPolyline(chain, frames, bendInfos,
                                 lat, vert, effOdMm, out bendRadii);
+                            if (foreign.Count > 0 &&
+                                ApplyCrossingLifts(ref pts, ref bendRadii, effOdMm / 2.0 * MmToFt, foreign))
+                                lifts++;
                             for (int i = 0; i < pts.Count - 1; i++)
                             {
                                 Conduit c = CreateConduit(doc, conduitType.Id, levelId,
@@ -567,7 +576,8 @@ namespace CableTrayHub.Revit
                         $"✔ {route.Key}: {created} conduit, {elbows} elbow" +
                         (isChained ? "" : " — segmen tidak menyambung, digambar per segmen") +
                         (deleted > 0 ? $" (menggantikan {deleted} lama)" : " (baru)") +
-                        (plan.NewSelection ? "" : " — pakai tray tersimpan") + laneNote);
+                        (plan.NewSelection ? "" : " — pakai tray tersimpan") + laneNote +
+                        (lifts > 0 ? $" — {lifts} conduit dinaikkan melewati persilangan" : ""));
                 }
 
                 SyncStorage.Save(doc, mapping);
@@ -887,6 +897,205 @@ namespace CableTrayHub.Revit
             // Tidak muat: ambil yang paling sedikit melewati dinding.
             return free.OrderBy(sh => Math.Max(0, leftWallFt - (minEdge + sh)) +
                                       Math.Max(0, (maxEdge + sh) - rightWallFt)).First();
+        }
+
+        // =================================================================
+        //  PERSILANGAN: NAIKKAN CONDUIT MELEWATI CONDUIT JALUR LAIN
+        // =================================================================
+
+        // Jarak bebas di atas conduit yang dilewati.
+        private const double LiftClearanceFt = 20 * MmToFt;
+        // "Ancang-ancang": panjang lurus datar antara ujung tanjakan dan titik
+        // persilangan / tangen elbow belokan, supaya radius elbow naik-turun
+        // tidak bertabrakan dengan elbow belokan maupun conduit yang dilewati.
+        private const double LiftApproachFt = 300 * MmToFt;
+        // Panjang horizontal tanjakan minimal (kemiringan maks 45°).
+        private const double LiftMinRampFt = 150 * MmToFt;
+
+        private struct ForeignLine { public XYZ A, B; public double R; }
+
+        /// <summary>Segmen conduit (mendatar) milik jalur lain / buatan manual.</summary>
+        private static List<ForeignLine> ForeignConduitLines(Document doc, string routeKey)
+        {
+            string norm = RouteInfo.NormKey(routeKey);
+            var list = new List<ForeignLine>();
+            foreach (Conduit c in new FilteredElementCollector(doc).OfClass(typeof(Conduit)).Cast<Conduit>())
+            {
+                string k = TagKeyOf(c);
+                if (k != null && RouteInfo.NormKey(k) == norm) continue;
+                if (!(c.Location is LocationCurve lc) || !(lc.Curve is Line l)) continue;
+                if (Math.Abs(l.Direction.Z) > 0.5) continue; // conduit tegak: tak bisa dilompati
+                double r = 0;
+                Parameter od = c.get_Parameter(BuiltInParameter.RBS_CONDUIT_OUTER_DIAM_PARAM);
+                if (od != null && od.HasValue) r = od.AsDouble() / 2.0;
+                if (r <= 0) r = 10 * MmToFt;
+                list.Add(new ForeignLine { A = l.GetEndPoint(0), B = l.GetEndPoint(1), R = r });
+            }
+            return list;
+        }
+
+        /// <summary>Titik terdekat dua segmen di bidang XY (parameter t,u ∈ [0,1]).</summary>
+        private static double ClosestXY(XYZ p, XYZ q, XYZ a, XYZ b, out double t, out double u)
+        {
+            double d1x = q.X - p.X, d1y = q.Y - p.Y, d2x = b.X - a.X, d2y = b.Y - a.Y;
+            double rx = p.X - a.X, ry = p.Y - a.Y;
+            double aa = d1x * d1x + d1y * d1y, ee = d2x * d2x + d2y * d2y;
+            double ff = d2x * rx + d2y * ry, cc = d1x * rx + d1y * ry, bb = d1x * d2x + d1y * d2y;
+            double den = aa * ee - bb * bb;
+            t = den > 1e-12 ? Math.Clamp((bb * ff - cc * ee) / den, 0, 1) : 0;
+            u = ee > 1e-12 ? Math.Clamp((bb * t + ff) / ee, 0, 1) : 0;
+            if (aa > 1e-12) t = Math.Clamp((bb * u - cc) / aa, 0, 1);
+            double dx = (p.X + d1x * t) - (a.X + d2x * u), dy = (p.Y + d1y * t) - (a.Y + d2y * u);
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        /// <summary>
+        /// Bila polyline conduit memotong conduit jalur lain (di denah) pada
+        /// ketinggian yang bertabrakan, sisipkan profil naik-turun:
+        ///   datar → tanjakan (≤45°) → datar di atas conduit lain → turunan → datar.
+        /// Tanjakan berhenti sejauh "ancang-ancang" (300 mm) sebelum titik
+        /// persilangan DAN sebelum tangen elbow belokan di dekatnya, jadi belokan
+        /// tee dilalui utuh di ketinggian atas dan radius naik tidak terhalang.
+        /// Mengembalikan true bila ada yang dinaikkan.
+        /// </summary>
+        private static bool ApplyCrossingLifts(ref List<XYZ> pts, ref List<double> bendRadii,
+            double rFt, List<ForeignLine> foreign)
+        {
+            List<XYZ> src = pts;
+            int m = src.Count;
+            if (m < 2) return false;
+            var cum = new double[m];
+            for (int i = 1; i < m; i++) cum[i] = cum[i - 1] + src[i - 1].DistanceTo(src[i]);
+            double total = cum[m - 1];
+
+            // 1. Zona persilangan [a,b] + tinggi angkat H yang dibutuhkan.
+            var zones = new List<(double A, double B, double H)>();
+            for (int j = 0; j < m - 1; j++)
+            {
+                XYZ p = src[j], q = src[j + 1];
+                double len = cum[j + 1] - cum[j];
+                if (len < 1e-6) continue;
+                XYZ dir = (q - p) / len;
+                if (Math.Abs(dir.Z) > 0.1) continue; // hanya segmen mendatar
+                foreach (var f in foreign)
+                {
+                    XYZ fd = f.B - f.A;
+                    double fl = fd.GetLength();
+                    if (fl < 1e-6) continue;
+                    fd = fd / fl;
+                    double sin = Math.Abs(dir.X * fd.Y - dir.Y * fd.X);
+                    if (sin < 0.17) continue; // sejajar (< ~10°): ditangani pemilihan lajur
+                    double need = rFt + f.R + LiftClearanceFt;
+                    double d = ClosestXY(p, q, f.A, f.B, out double t, out double u);
+                    if (d >= need) continue;
+                    double ourZ = p.Z + (q.Z - p.Z) * t;
+                    double fz = f.A.Z + (f.B.Z - f.A.Z) * u;
+                    if (fz - f.R >= ourZ + rFt + LiftClearanceFt) continue; // conduit lain di atas
+                    if (fz + f.R + LiftClearanceFt <= ourZ - rFt) continue; // sudah di atasnya
+                    double h = fz + f.R + LiftClearanceFt - (ourZ - rFt);
+                    double sMid = cum[j] + t * len;
+                    double w = need / sin;
+                    zones.Add((sMid - w, sMid + w, h));
+                }
+            }
+            if (zones.Count == 0) return false;
+
+            // Tangen elbow tiap verteks belokan (ruang yang dipakai busur elbow).
+            var vTan = new double[m];
+            for (int k = 1; k < m - 1; k++)
+            {
+                XYZ d1 = (src[k] - src[k - 1]), d2 = (src[k + 1] - src[k]);
+                if (d1.GetLength() < 1e-9 || d2.GetLength() < 1e-9) continue;
+                double ang = d1.Normalize().AngleTo(d2.Normalize());
+                double rb = k - 1 < bendRadii.Count ? bendRadii[k - 1] : 0;
+                vTan[k] = rb > 0 ? rb * Math.Tan(ang / 2.0) : 6 * rFt; // default family: ±3×OD
+            }
+
+            // 2. Perluas zona agar belokan di dekatnya ikut di "dataran atas",
+            //    lalu gabungkan zona yang tanjakannya saling tumpang.
+            var prof = new List<(double S0, double S1, double S2, double S3, double H)>();
+            foreach (var z in zones.OrderBy(zz => zz.A))
+            {
+                double a = z.A, b = z.B;
+                bool grew = true;
+                while (grew)
+                {
+                    grew = false;
+                    for (int k = 1; k < m - 1; k++)
+                    {
+                        if (vTan[k] <= 0) continue;
+                        double lo = cum[k] - vTan[k], hi = cum[k] + vTan[k];
+                        if (hi >= a - LiftApproachFt && lo <= b + LiftApproachFt &&
+                            (lo < a || hi > b))
+                        {
+                            a = Math.Min(a, lo); b = Math.Max(b, hi); grew = true;
+                        }
+                    }
+                }
+                double ramp = Math.Max(z.H, LiftMinRampFt);
+                double s1 = a - LiftApproachFt, s2 = b + LiftApproachFt;
+                double s0 = s1 - ramp, s3 = s2 + ramp;
+                if (prof.Count > 0 && s0 <= prof[^1].S3)
+                {
+                    var last = prof[^1];
+                    double hh = Math.Max(last.H, z.H);
+                    double rr = Math.Max(hh, LiftMinRampFt);
+                    double ns1 = Math.Min(last.S1, s1), ns2 = Math.Max(last.S2, s2);
+                    prof[^1] = (ns1 - rr, ns1, ns2, ns2 + rr, hh);
+                }
+                else prof.Add((s0, s1, s2, s3, z.H));
+            }
+
+            double HeightAt(double s)
+            {
+                double h = 0;
+                foreach (var pr in prof)
+                {
+                    double v;
+                    if (s <= pr.S0 || s >= pr.S3) v = 0;
+                    else if (s < pr.S1) v = pr.H * (s - pr.S0) / (pr.S1 - pr.S0);
+                    else if (s <= pr.S2) v = pr.H;
+                    else v = pr.H * (pr.S3 - s) / (pr.S3 - pr.S2);
+                    h = Math.Max(h, v);
+                }
+                return h;
+            }
+
+            XYZ PointAt(double s)
+            {
+                if (s <= 0) return src[0];
+                if (s >= total) return src[m - 1];
+                int j = 0;
+                while (j < m - 2 && cum[j + 1] < s) j++;
+                double len = cum[j + 1] - cum[j];
+                double t = len > 1e-9 ? (s - cum[j]) / len : 0;
+                return src[j] + (src[j + 1] - src[j]) * t;
+            }
+
+            // 3. Susun ulang polyline: verteks asli + titik patah profil.
+            var stations = new List<(double S, double R, bool Orig)>();
+            for (int k = 0; k < m; k++)
+                stations.Add((cum[k], k >= 1 && k < m - 1 && k - 1 < bendRadii.Count ? bendRadii[k - 1] : 0, true));
+            double tol = 5 * MmToFt;
+            foreach (var pr in prof)
+                foreach (double sb in new[] { pr.S0, pr.S1, pr.S2, pr.S3 })
+                {
+                    if (sb <= tol || sb >= total - tol) continue;
+                    if (stations.Any(st => Math.Abs(st.S - sb) < tol)) continue;
+                    stations.Add((sb, 0, false));
+                }
+            stations.Sort((x, y) => x.S.CompareTo(y.S));
+
+            var newPts = new List<XYZ>();
+            var newRadii = new List<double>();
+            for (int i = 0; i < stations.Count; i++)
+            {
+                newPts.Add(PointAt(stations[i].S) + XYZ.BasisZ * HeightAt(stations[i].S));
+                if (i > 0 && i < stations.Count - 1) newRadii.Add(stations[i].R);
+            }
+            pts = newPts;
+            bendRadii = newRadii;
+            return true;
         }
 
         internal static string GetComments(Element e)

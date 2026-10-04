@@ -2090,17 +2090,13 @@ function showToast(message, type = "success") {
         const k = dbKabel.find(item => item.id === cableId);
         if (k && qty > 0) {
           totalWeight += k.berat * qty;
-          let lineSpace = k.diameter * qty;
-          if (method === "Flat Spaced") lineSpace = (k.diameter * qty) + ((qty - 1) * 10);
-          else if (method === "Trefoil") lineSpace = (k.diameter * 2) * Math.ceil(qty / 3);
-
-          totalRequiredWidth += lineSpace;
-
           for (let q = 0; q < qty; q++) {
-            targetCablesList.push({ id: k.id, diameter: k.diameter, nama: k.nama, berat: k.berat });
+            targetCablesList.push({ id: k.id, diameter: k.diameter, nama: k.nama, berat: k.berat, group: i });
           }
         }
       }
+
+      totalRequiredWidth = computeLayoutMm(targetCablesList, method, 0).widthMm;
 
       const effectiveWidth = targetWidth * (1 - (sparePercent / 100));
       let statusSpace = totalRequiredWidth <= effectiveWidth ? "AMAN" : (totalRequiredWidth <= targetWidth ? "KAPASITAS CADANGAN TERPAKAI" : "OVER CAPACITY");
@@ -2146,48 +2142,72 @@ function showToast(message, type = "success") {
       }
     }
 
+    // Susunan default penampang dalam MILIMETER (x = pusat dari dinding kiri
+    // tray, y = pusat dari dasar tray). SATU-SATUNYA sumber geometri untuk
+    // kanvas, kalkulasi lebar, dan posisi yang dikirim ke plugin Revit,
+    // supaya ketiganya identik.
+    //  - Flat Touching : kabel berderet bersentuhan.
+    //  - Flat Spaced   : jarak bebas antar kabel = De (diameter kabel
+    //                    terbesar dari dua kabel yang bersebelahan).
+    //  - Trefoil       : per KELOMPOK kabel (satu baris input), tiap 3 kabel
+    //                    = 2 dasar bersentuhan + 1 puncak di tengah, tinggi
+    //                    pusat puncak = r + r·√3. Sisa 1–2 kabel diletakkan
+    //                    datar. Trefoil tidak pernah mencampur ukuran kabel.
+    function computeLayoutMm(cables, method, sideMarginMm) {
+      const out = [];
+      let edge = sideMarginMm || 0; // tepi kanan susunan terakhir (mm)
+      let prevDia = 0;
+      let i = 0;
+      while (i < cables.length) {
+        let j = i;
+        while (j < cables.length && cables[j].group === cables[i].group) j++;
+        const d = cables[i].diameter, r = d / 2;
+        let k = i;
+        if (method === 'Trefoil') {
+          while (k + 3 <= j) {
+            const x0 = edge + r;
+            out.push({ x: x0, y: r }, { x: x0 + d, y: r }, { x: x0 + r, y: r + r * Math.sqrt(3) });
+            edge += 2 * d;
+            k += 3;
+          }
+        }
+        for (; k < j; k++) {
+          const dk = cables[k].diameter;
+          if (method === 'Flat Spaced' && prevDia > 0) edge += Math.max(prevDia, dk);
+          out.push({ x: edge + dk / 2, y: dk / 2 });
+          edge += dk;
+          prevDia = dk;
+        }
+        if (method === 'Trefoil') prevDia = 0;
+        i = j;
+      }
+      return { positions: out, widthMm: edge - (sideMarginMm || 0) };
+    }
+
     function generateDefaultPositions(cables, method, width, height) {
       const canvas = document.getElementById('trayVisualizer');
       syncCanvasResolution(canvas);
       const scaleX = (canvas.width - 40) / width;
       const trayX = 20;
       const trayY = 30;
-      // Mulai dari jarak dinding kiri yang diatur user (0 = menempel rail tray)
-      let currentX = trayX + (getSideMarginMm() * scaleX);
-
       const maxTrayHeightPx = 80;
       const trayHeightPx = Math.min(maxTrayHeightPx, height * scaleX);
       const baseLineY = trayY + trayHeightPx - 2;
 
-      cableInstances = [];
-      cables.forEach((c, idx) => {
+      const layout = computeLayoutMm(cables, method, getSideMarginMm());
+      cableInstances = cables.map((c, idx) => {
+        const p = layout.positions[idx];
         const radiusPx = (c.diameter * scaleX) / 2;
-        let drawX = currentX + radiusPx;
-        let drawY = baseLineY - radiusPx;
-
-        if (method === "Flat Spaced") currentX += 4;
-        else if (method === "Trefoil" && idx % 3 === 2) {
-          // Kabel puncak trefoil: DI ATAS dan tepat di tengah dua kabel dasar
-          drawX = currentX - (radiusPx * 2);
-          drawY = baseLineY - (radiusPx * 2.8);
-        }
-
-        cableInstances.push({
+        return {
           cableId: c.id,
           nama: c.nama.split(" ")[0],
           fullName: c.nama,
-          x: drawX,
-          y: drawY,
+          x: trayX + p.x * scaleX,
+          y: baseLineY - p.y * scaleX,
           radius: radiusPx > 2 ? radiusPx : 2,
           diameter: c.diameter,
           berat: c.berat
-        });
-
-        if (method === "Trefoil") {
-          if (idx % 3 !== 2) currentX += (radiusPx * 2);
-        } else {
-          currentX += (radiusPx * 2);
-        }
+        };
       });
       drawTrayFromState();
     }
@@ -2770,17 +2790,17 @@ function showToast(message, type = "success") {
       // Detail per jalur (Panel Asal → Tujuan) — dipakai plugin Revit
       let totalWeight = 0;
       let totalRequiredWidth = 0;
+      const allCablesForWidth = [];
+      allCablesForWidth.groupIdx = 0;
       const routesDetail = dbRoutes.map(r => {
         const kabelList = [];
         (r.cables || []).forEach(c => {
+          allCablesForWidth.groupIdx++;
           const k = dbKabel.find(item => item.id === c.cableId);
           const qty = parseInt(c.qty) || 0;
           if (k && qty > 0) {
             totalWeight += k.berat * qty;
-            let lineSpace = k.diameter * qty;
-            if (method === 'Flat Spaced') lineSpace = (k.diameter * qty) + ((qty - 1) * 10);
-            else if (method === 'Trefoil') lineSpace = (k.diameter * 2) * Math.ceil(qty / 3);
-            totalRequiredWidth += lineSpace;
+            for (let q = 0; q < qty; q++) allCablesForWidth.push({ diameter: k.diameter, group: allCablesForWidth.groupIdx });
 
             const posisi = [];
             for (let q = 0; q < qty; q++) {
@@ -2802,6 +2822,7 @@ function showToast(message, type = "success") {
           kabel: kabelList
         };
       }).filter(r => r.kabel.length > 0);
+      totalRequiredWidth = computeLayoutMm(allCablesForWidth, method, 0).widthMm;
 
       const payload = {
         namaProyek: projName,

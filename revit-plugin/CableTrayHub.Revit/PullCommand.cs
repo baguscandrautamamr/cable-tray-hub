@@ -37,10 +37,6 @@ namespace CableTrayHub.Revit
         private const double MinBendRadiusFt = 50 * MmToFt;
         // Jarak aman conduit terhadap dasar/arm tray diatur user lewat dialog
         // Pull (tersimpan di PluginConfig; default 10 mm keduanya).
-        // OD conduit terkecil yang umum tersedia; kabel kecil (mis. De 3.1 mm)
-        // tetap digambar Revit sebagai conduit sebesar ini, jadi jarak ke
-        // dinding tray dihitung dari OD efektif, bukan diameter kabel.
-        private const double MinConduitOdMm = 21;
         // Radius pencarian fitting tray terdekat dari titik belok sumbu.
         private const double FittingSearchFt = 3000 * MmToFt;
 
@@ -303,7 +299,7 @@ namespace CableTrayHub.Revit
                         // Simulasi lama tanpa data posisi: fallback satu baris rapat
                         // di dasar tray, urut apa adanya.
                         double fallbackXmm = 0;
-                        double prevScaledMaxMm = 0, prevRawMaxMm = 0;
+                        double prevScaledMaxMm = 0, prevRawMaxMm = 0, prevRWebMm = 0, prevROdMm = 0;
                         bool firstGroup = true;
 
                         for (int gStart = 0; gStart < n;)
@@ -330,8 +326,13 @@ namespace CableTrayHub.Revit
 
                             // Sambung dari ujung kanan kelompok sebelumnya, jarak
                             // antar-kelompok mengikuti kanvas web.
+                            // Yang dipertahankan adalah CELAH BEBAS (permukaan ke
+                            // permukaan) dari web, bukan jarak pusat-pusat — karena
+                            // radius tiap kelompok berubah mengikuti OD nyata.
+                            double rWebMm = diaMm / 2.0, rOdMm = odFt / MmToFt / 2.0;
                             double baseMm = firstGroup ? minXmm
-                                                       : prevScaledMaxMm + (minXmm - prevRawMaxMm);
+                                : prevScaledMaxMm + prevROdMm + rOdMm
+                                  + Math.Max(0, minXmm - prevRawMaxMm - prevRWebMm - rWebMm);
 
                             for (int s = gStart; s < gEnd; s++)
                             {
@@ -355,6 +356,8 @@ namespace CableTrayHub.Revit
                             {
                                 prevScaledMaxMm = baseMm + (maxXmm - minXmm) * ratio;
                                 prevRawMaxMm = maxXmm;
+                                prevRWebMm = rWebMm;
+                                prevROdMm = rOdMm;
                                 firstGroup = false;
                             }
 
@@ -654,7 +657,11 @@ namespace CableTrayHub.Revit
                         if (outer != null && outer.HasValue) odFt = outer.AsDouble();
                     }
                     catch { /* pakai fallback */ }
-                    map[d] = Math.Max(odFt, MinConduitOdMm * MmToFt);
+                    // OD hasil ukur dipakai APA ADANYA. Dulu dipaksa minimal
+                    // 21mm, padahal conduit yang tergambar lebih kecil — kabel
+                    // kecil jadi berjarak renggang (tidak sama dengan web).
+                    if (odFt <= 0) odFt = d * MmToFt;
+                    map[d] = odFt;
                 }
                 st.RollBack();
             }

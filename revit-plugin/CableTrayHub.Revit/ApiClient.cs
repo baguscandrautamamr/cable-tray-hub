@@ -33,7 +33,11 @@ namespace CableTrayHub.Revit
             if (Detail == null) return new List<RouteInfo>();
 
             if (Detail.Routes != null && Detail.Routes.Count > 0)
-                return Detail.Routes.Where(r => r.Kabel != null && r.Kabel.Count > 0).ToList();
+            {
+                var list = Detail.Routes.Where(r => r.Kabel != null && r.Kabel.Count > 0).ToList();
+                foreach (var r in list) r.Normalize();
+                return list;
+            }
 
             if (Detail.Kabel != null && Detail.Kabel.Count > 0)
             {
@@ -67,6 +71,38 @@ namespace CableTrayHub.Revit
         [JsonPropertyName("panelFrom")] public string PanelFrom { get; set; }
         [JsonPropertyName("panelTo")] public string PanelTo { get; set; }
         [JsonPropertyName("kabel")] public List<CableInfo> Kabel { get; set; } = new();
+
+        /// <summary>Rapikan spasi nama panel (depan/belakang/ganda) lalu susun ulang Key.</summary>
+        public void Normalize()
+        {
+            if (string.IsNullOrWhiteSpace(PanelFrom) && string.IsNullOrWhiteSpace(PanelTo) && Key != null)
+            {
+                int a = Key.IndexOf('→');
+                if (a >= 0) { PanelFrom = Key.Substring(0, a); PanelTo = Key.Substring(a + 1); }
+            }
+            PanelFrom = CleanName(PanelFrom);
+            PanelTo = CleanName(PanelTo);
+            if (PanelFrom.Length > 0 || PanelTo.Length > 0)
+                Key = (PanelFrom.Length > 0 ? PanelFrom : "Asal") + "→" + (PanelTo.Length > 0 ? PanelTo : "Tujuan");
+            else
+                Key = CleanName(Key);
+        }
+
+        public static string CleanName(string s) =>
+            string.Join(" ", (s ?? "").Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+
+        /// <summary>
+        /// Kunci pembanding jalur: spasi dirapikan (termasuk di sekitar "→")
+        /// dan huruf besar/kecil diabaikan. "lp-ground  floor " == "LP-GROUND FLOOR".
+        /// </summary>
+        public static string NormKey(string key)
+        {
+            key = key ?? "";
+            int a = key.IndexOf('→');
+            string k = a >= 0 ? CleanName(key.Substring(0, a)) + "→" + CleanName(key.Substring(a + 1))
+                              : CleanName(key);
+            return k.ToUpperInvariant();
+        }
     }
 
     public class TrayInfo
